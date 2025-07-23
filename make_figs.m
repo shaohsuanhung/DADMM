@@ -321,7 +321,7 @@ classdef make_figs
             for param_idx = 1:4
                 subplot(2,2,param_idx);
                 hold on;
-            
+                legendEntries = {};
                 % Initialize a cell array to store plot handles
                 hPlots = []; % Use a simple array to store handles
             
@@ -345,7 +345,7 @@ classdef make_figs
                 end
             
                 set(gca, 'YScale', 'log');
-                legend(hPlots, legendEntries{param_idx}, 'Location', 'best');
+                legend(hPlots, legendEntries, 'Location', 'best');
             
                 hold off;
                 xlabel('Iterations (k)');

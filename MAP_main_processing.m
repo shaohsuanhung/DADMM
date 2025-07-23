@@ -260,7 +260,7 @@ for mc = 1:num_monte_carol
         c_penalty = [10^2, 10^2, 3*5, 3*5]; % For SNR 50dB
         % c_penalty = [1e6,1e6, 3e4, 3e4]; % For SNR 50dxB
         % initial_values = repmat([1000, 1000, 10, 10]', 1,numNodes);
-        initial_values = repmat([1000, 1000, 20, 20]', 1,numNodes);
+        initial_values = repmat([1000, 1000, 17, 17]', 1,numNodes);
         Nu = cell(1, numNodes);
         Nu_prev = cell(1, numNodes);
         update_z = cell(1, numNodes);
@@ -372,7 +372,7 @@ end
 
 %% Figures
 % True parameters
-set(gcf,'Color','white');
+% set(gcf,'Color','white');
 true_params = [target.initial_position(1), target.initial_position(2), target.speed * target.direction(1), target.speed * target.direction(2)];
 fig_ut = make_figs(network_topo.numNodes);
 
@@ -380,20 +380,20 @@ fig_ut = make_figs(network_topo.numNodes);
 fig_ut.plot_converge_across_node(all_estimations_every_iter,true_params,network_topo);
 
 %-- Plot dual & primal residual
-fig_ut.plot_dual_primal_residual(dual_residual_all,primal_residual_CR, all_estimations_every_iter_CR,laplacian_matrix_CR,network_topo);
-%-- 
-node_to_show = 3;
-fig_ut.plot_specific_node_converg(node_to_show,com_rad_CR,laplacian_matrix_CR,all_estimations_every_iter_CR,estimated_params_CA,network_topo,true_params);
-fig_ut.plot_sepcific_node_error_converg(all_estimations_every_iter_mc,estimates_mc_CA,direction_mc,true_params_mc);
-
-%-- 
-fig_ut.plot_MSE_error(direction_mc,all_estimations_every_iter_mc,true_params_mc);
-
-%-- Plot measurement errors of all neighhbors
-fig_ut.plot_errors_all_neighbors(com_rad_CR, laplacian_matrix_CR, all_estimations_every_iter_CR, estimated_params_CA,network_topo,true_params);
-
-%-- 
-fig_ut.plot_MSE_for_all_neightbors(com_rad_CR,laplacian_matrix_CR,estimated_params_CA,all_estimations_every_iter_CR,true_params,network_topo);
-
-%--
-fig_ut.plot_MSE_error_compare_DA_DS(direction_mc,all_estimations_every_iter_mc,estimates_mc_CA, true_params_mc);
+% fig_ut.plot_dual_primal_residual(dual_residual_all,primal_residual_CR, all_estimations_every_iter_CR,laplacian_matrix_CR,network_topo);
+% %-- 
+% node_to_show = 3;
+% fig_ut.plot_specific_node_converg(node_to_show,com_rad_CR,laplacian_matrix_CR,all_estimations_every_iter_CR,estimated_params_CA,network_topo,true_params);
+% fig_ut.plot_sepcific_node_error_converg(all_estimations_every_iter_mc,estimates_mc_CA,direction_mc,true_params_mc);
+% 
+% %-- 
+% fig_ut.plot_MSE_error(direction_mc,all_estimations_every_iter_mc,true_params_mc);
+% 
+% %-- Plot measurement errors of all neighhbors
+% fig_ut.plot_errors_all_neighbors(com_rad_CR, laplacian_matrix_CR, all_estimations_every_iter_CR, estimated_params_CA,network_topo,true_params);
+% 
+% %-- 
+% fig_ut.plot_MSE_for_all_neightbors(com_rad_CR,laplacian_matrix_CR,estimated_params_CA,all_estimations_every_iter_CR,true_params,network_topo);
+% 
+% %--
+% fig_ut.plot_MSE_error_compare_DA_DS(direction_mc,all_estimations_every_iter_mc,estimates_mc_CA, true_params_mc);
