@@ -122,6 +122,8 @@ classdef ADMM_utils
 
                     % Accumulate the negative log likelihood - Eq.4.1
                     prior = prior +  (1/2*(sigma_fd2*sigma_r2)) * (( mu_fdj- f_d_model).^2 * (sigma_r2) + (mu_rj - r_model).^2 * (sigma_fd2));
+                    % prior = prior +  (1/2*(sigma_fd2*sigma_r2)) * (( mu_fdj).^2 * (sigma_r2) + (mu_rj).^2 * (sigma_fd2));
+                    
                 end
             end 
         end
