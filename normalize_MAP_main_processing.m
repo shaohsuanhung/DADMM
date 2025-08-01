@@ -1,34 +1,31 @@
-clc; close all; clear;
+clc; clear; close all;
 ut = ADMM_utils;
 %TODO: 
 % 1. Write a text file to export config. / parameters setup of the run
-% 2. Make the algorithm to be parallel computing?
-%-- Config. of the run
+%%%%%%%%%%%%%%%%-- Config. of the run
 num_monte_carol = 1;
 direction_mc = zeros(num_monte_carol,2);
 gt_paras_mc = zeros(num_monte_carol,4);
-%-- Network topo
+
+%%%%%%%%%%%%%%%%%-- Network topo
 network_topo.numNodes = 10;
 theta = linspace(0,2*pi, network_topo.numNodes+1);
 network_topo.theta = theta(1:end-1);
-network_topo.com_rad_CR = 5000; % communication radius range
-network_topo.radius = 3000;     % spatial placement radius 
+network_topo.radius = 3000;
 network_topo.radar_pos = network_topo.radius * [cos(network_topo.theta); sin(network_topo.theta)]';
 network_topo.C_distance = 1;  % Cost per meter
 network_topo.C_data = 1;      % Cost per byte
 network_topo.distances_between_radar_nodes = zeros(network_topo.numNodes,network_topo.numNodes);
-
 for i = 1:network_topo.numNodes
     for j = 1:network_topo.numNodes
         network_topo.distances_between_radar_nodes(i,j) = norm(network_topo.radar_pos(i,:) - network_topo.radar_pos(j,:));
     end
 end
 
-knn = 5;
-com_rad_CR= 5000; % Communication radius in CD
+network_topo.com_rad_CR= 3000; % Communication radius in CD
 
 
-% Signal and environment parameters
+%%%%%%%%%%%%%%%-- Signal and environment parameters
 env.c = 3e8;
 env.lambda = env.c / 10e9;
 env.time_step = 1e-4;
@@ -38,10 +35,13 @@ env.fs = 2 * env.B; % Sampling frequency
 
 % M_values = [5, 15, 30];
 M_values = 64; % Time_step = 1e-4, means for the time interval of burst is 1e-4. Is this make sense? 
-
+% This can be move out to the loop, and maybe set as env. 
+snr_idx = 50;
+SNR_lin = 10^(snr_idx / 10);
+fprintf('SNR_db: %d dB, SNR_linear: %f\n', snr_idx, SNR_lin);
 % Range of nodes
 % node_range = 20:3:20;
-node_range = 10;
+node_range = network_topo.numNodes;
 
 options_DA = optimoptions('fmincon', 'Display', 'off', ScaleProblem=true, OptimalityTolerance=1e-6, FunctionTolerance=1e-6, StepTolerance=1e-6, MaxIterations=100);
 options_CA = optimoptions('fmincon', 'Display', 'off', ScaleProblem=true, OptimalityTolerance=1e-6, FunctionTolerance=1e-6, StepTolerance=1e-6, MaxIterations=100000);
@@ -63,11 +63,8 @@ for mc = 1:num_monte_carol
     target.direction = [cos(angle_degrees * pi / 180), sin(angle_degrees * pi / 180)];%     direction = direction / norm(direction);
     target.true_params = [target.initial_position(1), target.initial_position(2), target.speed * target.direction(1), target.speed * target.direction(2)];
     
-
     disp('Direction the target is travelling:');
     disp(target.direction);
-
-
     %-- Initialize M (measurements)
     time_vector = 0:env.time_step:M_values * env.time_step; % Adjust time vector for each M, time_step
     
@@ -94,25 +91,25 @@ for mc = 1:num_monte_carol
     
     % Initialize the adjacency matrix
     adj_matrix = zeros(network_topo.numNodes, network_topo.numNodes);
-
-    for com_rad = 1:length(com_rad_CR)
-        fprintf('Communication Radius: %d\n',  com_rad_CR(com_rad));
-        communication_radius = com_rad_CR(com_rad);
+    for com_rad = 1:length(network_topo.com_rad_CR)
+        fprintf('Communication Radius: %d\n',  network_topo.com_rad_CR(com_rad));
+        communication_radius = network_topo.com_rad_CR(com_rad);
         % Calculate all matrixs in one function
         [adj_matrix,degree_matrix, laplacian_matrix, inc_matrix, weights_matrix] = ut.calculate_all_graph_matrix(network_topo.radar_pos, communication_radius, network_topo.numNodes);
 
         % Create a cell array to hold the neighbors of each node
-        neighbors = ut.get_neighbors(adj_matrix, network_topo.numNodes);
+        neighbors = cell(network_topo.numNodes, 1);
+            
+        for i = 1:network_topo.numNodes
+            neighbors{i} = find(adj_matrix(i, :) == 1);
+        end
        
         % Compute the Laplacian matrix
         laplacian_matrix_CR{com_rad}=laplacian_matrix;  
         laplacian_eigen = eig(laplacian_matrix);
         laplacian_eigen_vector = sort(laplacian_eigen, 'descend');
         
-        % This can be move out to the loop, and maybe set as env. 
-        snr_idx = 50;
-        SNR_lin = 10^(snr_idx / 10);
-        fprintf('SNR_db: %d dB, SNR_linear: %f\n', snr_idx, SNR_lin);
+
         %%% Monte carlo simulations
         estimated_param_values = [];
         M = M_values;
@@ -127,20 +124,23 @@ for mc = 1:num_monte_carol
         range_true = zeros(M, network_topo.numNodes);
         doppler_true = zeros(M, network_topo.numNodes); 
         measurements_true = zeros(2 * M, network_topo.numNodes);
+        % Generate gt data (rel. pos and vel)
         [range_true, doppler_true, measurements_true] = ut.gt_data_generation(range_true,doppler_true, measurements_true, target,network_topo,env, M);
         measurements_true_all = reshape(measurements_true, [], 1);% flatten
         
         % Calculate Noise for range and Doppler from signal model
         % TODO: This can also be set into env. params
-        range_var = (3 * env.c^2) / (8 * pi^2 * B(1)^2 * SNR_lin) ;
-        doppler_var = (3 * ((fs(1))^2)) / (pi^2 * SNR_lin * M^3) ;
+        range_var = (3 * env.c^2) / (8 * pi^2 * env.B(1)^2 * SNR_lin) ;
+        doppler_var = (3 * ((env.fs(1))^2)) / (pi^2 * SNR_lin * M^3) ;
         range_sd = sqrt(range_var);
         doppler_sd = sqrt(doppler_var);
         rho = 0.0;  
         % 2x2 covariance matrix Sigma
-        Sigma = [range_var, rho * range_sd * doppler_sd; rho * range_sd * doppler_sd, doppler_var];   
+        Sigma = [range_var, rho * range_sd * doppler_sd; rho * range_sd * doppler_sd, doppler_var];  
         total_measurements = numNodes * M;    
-    
+        %%%%%%%%%%%%%%%%% Balanceing the sigma matrix
+        % Sigma = Sigma + 1e3*(eye(2,2));
+        %%%%%%%%%%%%%%%%%
         % Sigma_big is of the size 2NM x 2NM, 2= (range, doppler), 
         Sigma_big = kron(eye(total_measurements), Sigma);
         noise_matrix = mvnrnd(zeros(2 * total_measurements, 1), Sigma_big)';
@@ -155,6 +155,30 @@ for mc = 1:num_monte_carol
     
         % y_hat = y_gt + noise
         measurements_with_error_all = measurements_true_all + noise_matrix;
+
+        %%%%%%%%%%%%%  MOD: Normalized the measurement     %%%%%%%%%%%%%
+        % mu_range_recover = mean(range_with_error);
+        % mu_doppler_recover = mean(doppler_with_error);
+        % std_range_recover = std(range_with_error);
+        % std_doppler_recover = std(doppler_with_error);
+        % range_with_error = normalize(range_with_error);
+        % doppler_with_error = normalize(doppler_with_error);
+        % measurements_with_error_all = zeros(2 * M, network_topo.numNodes);
+        % for t = 1:M % Target at t moment. 
+        %     for r = 1:network_topo.numNodes
+        %         % Store the true measurements: range followed by Doppler
+        %         measurements_with_error_all(2 * t - 1, r) = range_with_error(t, r);
+        %         measurements_with_error_all(2 * t, r) = doppler_with_error(t, r);
+        %     end
+        % end
+        %%%%%%%%%%%%% End of MOD: Normalized the measurement%%%%%%%%%%%%
+
+        range_with_error_cell = cell(1, numNodes);
+        doppler_with_error_cell = cell(1, numNodes);
+        numNodes_cell = cell(1, numNodes);
+        radar_positions_cell = cell(1, numNodes);
+        Sigma_big_1_cell = cell(1, numNodes);
+        Sigma_big_2_cell = cell(1, numNodes);
         
         range_with_error_CA = range_with_error;
         doppler_with_error_CA = doppler_with_error;
@@ -166,14 +190,12 @@ for mc = 1:num_monte_carol
         mu_d = mean(doppler_with_error);
         sigma_d = var(doppler_with_error);
 
-        % mu_r = range_true(1,:);
-        % sigma_r   = var(range_true);
-        % mu_d = doppler_true(1,:);
-        % sigma_d = var(range_true);
+        %%%%%%%%%%%%%  MOD: Normalized the measurement     %%%%%%%%%%%%%
+        %%%%%%%%%%%%% End of MOD: Normalized the measurement%%%%%%%%%%%%
     
 
         % y_0 and lower, upper bound
-        initial_guess = [1000, 1000, 10, 10];
+        initial_guess = [1000, 1000, -20, 20];
         lb = [-inf,-inf,-inf,-inf];
         ub = [inf,inf, inf, inf];
         % fun = @(params) ut.logLikelihood(params, range_with_error_CA, doppler_with_error_CA, network_topo.radar_pos, network_topo.numNodes, M, env.lambda, Sigma_big);
@@ -185,117 +207,86 @@ for mc = 1:num_monte_carol
         %% Start the sensing, assign the measuremnet (range, doppler) to sensor network 
         % Have M brust, for N nodes. per parameters. We have (r, v) as params.
         % This can be replaced by loop over $neighbors var?
-        % range_with_error_cell = cell(1, numNodes);
-        % doppler_with_error_cell = cell(1, numNodes);
-        % numNodes_cell = cell(1, numNodes);
-        % radar_positions_cell = cell(1, numNodes);
-        % Sigma_big_1_cell = cell(1, numNodes);
-        % Sigma_big_2_cell = cell(1, numNodes);
-        % mu_r_cell = cell(1,network_topo.numNodes);
-        % mu_d_cell = cell(1,network_topo.numNodes);
-        % sigma_r_cell = cell(1,network_topo.numNodes);
-        % sigma_d_cell = cell(1,network_topo.numNodes);
-        % for n = 1: network_topo.numNodes
-        %     current_neighbors = find(laplacian_matrix(n, :) ~= 0);
-        %     k = 0;
-        %     Sigma_big_1 = [];
-        %     Sigma_big_2 = [];
-        %     range_with_error_1 =[];
-        %     doppler_with_error_1 = [];
-        %     radar_positions_1 = [];
-        %     for j = current_neighbors
-        %         k = k+1;
-        %         % 
-        %         range_with_error_1(:,k) = range_with_error(:,j);
-        %         doppler_with_error_1(:,k) = doppler_with_error(:,j);
-        %         radar_positions_1(k,:) = network_topo.radar_pos(j,:);
-        %         numNodes_1 = length(current_neighbors);
-        %         mu_r_neighbor(:,k) = mu_r(k);
-        %         mu_d_neighbor(:,k) = mu_d(k);
-        %         sigma_r_neighbor(:,k) = sigma_r(k);
-        %         sigma_d_neighbor(:,k) = sigma_d(k);
-
-        %         for i =1:M
-        %             base_idx = 2 * (M * (j - 1) + (i - 1)) + 1;
-        %             sigma_r2 = Sigma_big(base_idx, base_idx);
-        %             Sigma_big_1(((k-1)*M + (i-1))*2 + 1) = sigma_r2; 
-        %             sigma_fd2 = Sigma_big(base_idx + 1, base_idx + 1);
-        %             Sigma_big_1(((k-1)*M + (i-1))*2 + 2) = sigma_fd2;
-
-        %         end
-        %         Sigma_big_2 = diag(Sigma_big_1);
-
-        %         % Store the values in cell arrays
-        %         range_with_error_cell{n} = range_with_error_1;
-        %         doppler_with_error_cell{n} = doppler_with_error_1;
-        %         numNodes_cell{n} = numNodes_1;
-        %         radar_positions_cell{n} = radar_positions_1;
-        %         Sigma_big_1_cell{n} = Sigma_big_1;
-        %         Sigma_big_2_cell{n} = Sigma_big_2;
-
-        %         mu_r_cell{n}        = mu_r(j);
-        %         mu_d_cell{n}        = mu_d(j);
-        %         sigma_r_cell{n}     = sigma_r(j);
-        %         sigma_d_cell{n}     = sigma_d(j);
-        %         % Prior
-        %         % mu_d_cell{n} = mu_r_neighbor;
-        %         % mu_r_cell{n} = mu_d_neighbor;
-        %         % sigma_r_cell{n} = sigma_r_neighbor;
-        %         % sigma_d_cell{n} = sigma_d_neighbor; 
-
-
-        %     end
-        % end
-
-        range_with_error_cell = cell(1, numNodes);
-        doppler_with_error_cell = cell(1, numNodes);
-        numNodes_cell = cell(1, numNodes);
-        radar_positions_cell = cell(1, numNodes);
-        Sigma_big_1_cell = cell(1, numNodes);
-        Sigma_big_2_cell = cell(1, numNodes);
         mu_r_cell = cell(1,network_topo.numNodes);
         mu_d_cell = cell(1,network_topo.numNodes);
         sigma_r_cell = cell(1,network_topo.numNodes);
         sigma_d_cell = cell(1,network_topo.numNodes);
-        
-        % Pharse_measurements
-        [range_with_error_cell,doppler_with_error_cell,numNodes_cell,...
-        radar_positions_cell,Sigma_big_1_cell,Sigma_big_2_cell,...
-        mu_r_cell,mu_d_cell,sigma_r_cell,sigma_d_cell] = pharse_measurements(laplacian_matrix, ...
-        range_with_error_cell, doppler_with_error_cell, ...
-        mu_r_cell, mu_d_cell, sigma_r_cell, sigma_d_cell, network_topo, M);
+        for n = 1: network_topo.numNodes
+            current_neighbors = find(laplacian_matrix(n, :) ~= 0);
+            k = 0;
+            Sigma_big_1 = [];
+            Sigma_big_2 = [];
+            range_with_error_1 =[];
+            doppler_with_error_1 = [];
+            radar_positions_1 = [];
+            for j = current_neighbors
+                k = k+1;
+                % 
+                range_with_error_1(:,k) = range_with_error(:,j);
+                doppler_with_error_1(:,k) = doppler_with_error(:,j);
+                radar_positions_1(k,:) = network_topo.radar_pos(j,:);
+                numNodes_1 = length(current_neighbors);
+                mu_r_neighbor(:,k) = mu_r(k);
+                mu_d_neighbor(:,k) = mu_d(k);
+                sigma_r_neighbor(:,k) = sigma_r(k);
+                sigma_d_neighbor(:,k) = sigma_d(k);
+
+                for i =1:M
+                    base_idx = 2 * (M * (j - 1) + (i - 1)) + 1;
+                    sigma_r2 = Sigma_big(base_idx, base_idx);
+                    Sigma_big_1(((k-1)*M + (i-1))*2 + 1) = sigma_r2; 
+                    sigma_fd2 = Sigma_big(base_idx + 1, base_idx + 1);
+                    Sigma_big_1(((k-1)*M + (i-1))*2 + 2) = sigma_fd2;
+
+                end
+                Sigma_big_2 = diag(Sigma_big_1);
+
+                % Store the values in cell arrays
+                range_with_error_cell{n} = range_with_error_1;
+                doppler_with_error_cell{n} = doppler_with_error_1;
+                numNodes_cell{n} = numNodes_1;
+                radar_positions_cell{n} = radar_positions_1;
+                Sigma_big_1_cell{n} = Sigma_big_1;
+                Sigma_big_2_cell{n} = Sigma_big_2;
+
+                mu_r_cell{n}        = mu_r(j);
+                mu_d_cell{n}        = mu_d(j);
+                sigma_r_cell{n}     = sigma_r(j);
+                sigma_d_cell{n}     = sigma_d(j);
+                % Prior
+                mu_d_cell{n} = mu_r_neighbor;
+                mu_r_cell{n} = mu_d_neighbor;
+                sigma_r_cell{n} = sigma_r_neighbor;
+                sigma_d_cell{n} = sigma_d_neighbor; 
+
+
+            end
+        end
     
         %% Distributed consensus algor.
-        % %%TODO: Set the distributed algor. config
+        %%TODO: Set the distributed algor. config
         % Init.
         converged = false;
         iteration = 0;
-        tolerance = 1e-2;
-        % tolerance = 1e-2;
-        max_iterations = 300;
-        % c_penalty = [10^2, 10^2, 3, 3]; % For SNR 50dB
-        % c_penalty = [1e2,1e2, 3e5, 3e5]; % For SNR 50dxB
-        c_penalty = [1e2,1e2,3e3,3e3];
-        initial_values = repmat([1000, 1000, 14, 14]', 1,numNodes);
-        % initial_values = repmat([1000, 1000, 17, 17]', 1,numNodes);
+        tolerance = 1e-4;
+        max_iterations = 1e5;
+        % c_penalty = [10^2, 10^2, 3*5, 3*5]; % For SNR 50dB
+        c_penalty = [1e3,1e3, 15, 15]; % For SNR 50dxBz
+        initial_values = repmat([1000, 1000, 20, 20]', 1,numNodes);
         Nu = cell(1, numNodes);
         Nu_prev = cell(1, numNodes);
         update_z = cell(1, numNodes);
         update_z_prev = cell(1, numNodes);
         primal_residual_all =[];
-        primal_residual_by_para = cell(1,numNodes);
         dual_residual_all = [];
-        dual_residual_by_para = cell(1,numNodes);
         all_estimations_every_iter = [];
-    
+        all_estimations_every_iter_tmp = [];
         % Define the parameters for adaptive penalty update
         % Define more conservative parameters for adaptive penalty update
         tau_incr = [2.01, 2.01, 2.1, 2.1];  % Smaller increase factor
         tau_decr = [2.01, 2.01, 2.1, 2.1];  % Smaller decrease factor
-        % tau_incr = [50, 50, 50, 50];  % Smaller increase factor
-        % tau_decr = [50, 50, 50, 50];  % Smaller decrease factor
-        % tau_incr = [1.1, 1.1, 1.1, 1.1];  % Smaller increase factor
-        % tau_decr = [1.1, 1.1, 1.1, 1.1];  % Smaller decrease factor
+        % tau_incr = [10, 10, 10, 10];  % Smaller increase factor
+        % tau_decr = [10, 10, 10, 10];  % Smaller decrease factor
         mu = [3,3,10,10];          % Slightly smaller threshold ratio
         alpha = [0.5, 0.5, 0.5, 0.5];  % Damping factor
     
@@ -304,8 +295,6 @@ for mc = 1:num_monte_carol
             Nu_prev{n} = zeros(4, network_topo.numNodes);
             update_z{n} = zeros(4, network_topo.numNodes);
             update_z_prev{n} = zeros(4, network_topo.numNodes);
-            % dual_residual_by_para{n} = zeros(4,network_topo.numNodes);
-            % primal_residual_by_para{n} = zeros(4,network_topo.numNodes);
         end
         % Start optmization
         while ~converged && iteration < max_iterations
@@ -332,34 +321,28 @@ for mc = 1:num_monte_carol
                 for j = neighbors{n}
                     % Eq. (4.17b)
                     update_z{n}(:,j) = (1/2) * (((c_penalty.^(-1))' .* (Nu{n}(:,j) + Nu{j}(:,n))) + all_estimations(:,n) + all_estimations(:, j)); 
+                    % % Eq. (4.17c)
+                    % Nu{n}(:,j) = Nu_prev{n}(:,j) + c_penalty' .* (initial_values(:,n) - update_z_prev{n}(:,j));
                 end
-            end
-            
-            
+            end            
             
             
             % Calculate residual, for monitor convergence
             primal_residual = 0;
             dual_residual = 0; 
-            primal_residual_params = zeros(4,10);
-            dual_residual_params   = zeros(4,10);
+
             for n = 1: network_topo.numNodes
                 for j = neighbors{n}
                     % Calculate the primal residual, Eq.4.18
                     primal_residual = primal_residual + norm(all_estimations(:,n) - update_z{n}(:,j), 2)^2;
                     % primal_residual = primal_residual + norm(all_estimations(:,n) - update_z{n}(:,j), 2);
-                    primal_residual_params = primal_residual_params + abs(all_estimations(:,n) - update_z{n}(:,j));
                     % Calculate the dual residual, Eq.4.19
                     dual_residual = dual_residual + norm(Nu{n}(:,j) - Nu_prev{n}(:,j))^2;
                     % dual_residual = dual_residual + norm(Nu{n}(:,j) - Nu_prev{n}(:,j));
-                    dual_residual_params = dual_residual_params + abs(Nu{n}(:,j) - Nu_prev{n}(:,j));
                 end
             end
-            primal_residual_all(iteration)     = primal_residual;
-            dual_residual_all(iteration)       = dual_residual;
-            primal_residual_by_para{iteration} = primal_residual_params;
-            dual_residual_by_para{iteration}   = dual_residual_params; 
-
+            primal_residual_all(iteration) = primal_residual;
+            dual_residual_all(iteration)   = dual_residual;
             % Stop criterion
             if primal_residual < tolerance
                 break;
@@ -369,21 +352,14 @@ for mc = 1:num_monte_carol
                 break;
             end
             
-            % % Every 30 iteration, 
-            % if mod(iteration, 30) == 0
-            %     % Update the penalty parameter based on the residuals
-            %     if primal_residual < 10* dual_residual
-            %         c_penalty = tau_incr .* c_penalty;
-            %     elseif dual_residual < 10*primal_residual
-            %         c_penalty = c_penalty .* ((tau_decr).^(-1));
-            %     end
-            % end
-            % Every iteration, 
-            % Update the penalty parameter based on the residuals
-            if primal_residual < 10* dual_residual
-                c_penalty = tau_incr .* c_penalty;
-            elseif dual_residual < 10*primal_residual
-                c_penalty = c_penalty .* ((tau_decr).^(-1));
+            % Every 30 iteration, 
+            if mod(iteration, 30) == 0
+                % Update the penalty parameter based on the residuals
+                if primal_residual < 10* dual_residual
+                    c_penalty = tau_incr .* c_penalty;
+                elseif dual_residual < 10*primal_residual
+                    c_penalty = c_penalty .* ((tau_decr).^(-1));
+                end
             end
     
             % Update the cur. term to next term (k -> k-1)
@@ -396,7 +372,21 @@ for mc = 1:num_monte_carol
         iteration_CR(com_rad) = iteration;
         primal_residual_CR{com_rad} = primal_residual_all;
         dual_residual_CR{com_rad}  = dual_residual_all;
+        %%%%%%%%%%%%% Recover estimation
+        % all_estimations_every_iter_tmp(1,:,:) = all_estimations_every_iter(1,:,:).*std_range_recover + mu_range_recover;
+        % all_estimations_every_iter_tmp(2,:,:) = all_estimations_every_iter(2,:,:).*std_range_recover + mu_range_recover;
+        % all_estimations_every_iter_tmp(3,:,:) = all_estimations_every_iter(3,:,:).*std_doppler_recover + mu_doppler_recover;
+        % all_estimations_every_iter_tmp(4,:,:) = all_estimations_every_iter(3,:,:).*std_doppler_recover + mu_doppler_recover;
+        %%%%%%%%%%%%% End of recover
+
         all_estimations_every_iter_CR{com_rad} = all_estimations_every_iter;
+        % all_estimations_every_iter_CR{com_rad} = all_estimations_every_iter_tmp;
+        %%%%%%%%% MOD: Recover the normalized data %%%%%%%%%%%%%%%%%%%%
+        % orient_d = all_estimations_every_iter(2,:,:)./all_estimations_every_iter(1,:,:);
+        % orient_v = all_estimations_every_iter(4,:,:)./all_estimations_every_iter(4,:,:);
+        % 
+        % all_estimations_every_iter_CR{com_rad} = 
+        %%%%%%%%%%%%%%%%%%%% END of MOD %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     end
     true_params_mc(mc,:) = target.true_params;
     direction_mc(mc,:) = target.direction;
@@ -415,36 +405,25 @@ true_params = [target.initial_position(1), target.initial_position(2), target.sp
 fig_ut = make_figs(network_topo.numNodes);
 
 %-- Plot covergence of ADMM across all nodes
-% fig_ut.plot_converge_across_node(all_estimations_every_iter,true_params,network_topo);
+fig_ut.plot_converge_across_node(all_estimations_every_iter,true_params,network_topo);
 fig_ut.plot_converge_across_node_withCentrl(all_estimations_every_iter,true_params,network_topo,estimates_mc_CA);
-% %-- Plot dual & primal residual
-% fig_ut.plot_dual_primal_residual(dual_residual_all,primal_residual_CR, all_estimations_every_iter_CR,laplacian_matrix_CR,network_topo);
-% %-- 
-% node_to_show = 3;
-% fig_ut.plot_specific_node_converg(node_to_show,com_rad_CR,laplacian_matrix_CR,all_estimations_every_iter_CR,estimated_params_CA,network_topo,true_params);
-% fig_ut.plot_sepcific_node_error_converg(all_estimations_every_iter_mc,estimates_mc_CA,direction_mc,true_params_mc);
-% 
-% %-- 
-% fig_ut.plot_MSE_error(direction_mc,all_estimations_every_iter_mc,true_params_mc);
-% 
-% %-- Plot measurement errors of all neighhbors
-% fig_ut.plot_errors_all_neighbors(com_rad_CR, laplacian_matrix_CR, all_estimations_every_iter_CR, estimated_params_CA,network_topo,true_params);
-% 
-% %-- 
-% fig_ut.plot_MSE_for_all_neightbors(com_rad_CR,laplacian_matrix_CR,estimated_params_CA,all_estimations_every_iter_CR,true_params,network_topo);
-% 
-% %--
-% fig_ut.plot_MSE_error_compare_DA_DS(direction_mc,all_estimations_every_iter_mc,estimates_mc_CA, true_params_mc);
+% fig_ut.plot_converge_across_node_withCentrl(all_estimations_every_iter_tmp,true_params,network_topo,estimates_mc_CA);
 
-% figure;
-% 
-% for param = 1:4
-%     subplot(2, 2, param);
-%     hold on;  % Allows multiple plots on the same axes
-% 
-%     for i = 1:size(primal_residual_by_para,2)
-%         resiaul_by_iter = sum(primal_residual_by_para{i}(param,:));
-%         plot(i,resiaul_by_iter,'o');
-%     end 
-%     set(gca, 'YScale', 'log');
-% end
+%-- Plot dual & primal residual
+fig_ut.plot_dual_primal_residual(dual_residual_all,primal_residual_CR, all_estimations_every_iter_CR,laplacian_matrix_CR,network_topo);
+%-- 
+node_to_show = 3;
+fig_ut.plot_specific_node_converg(node_to_show,network_topo.com_rad_CR,laplacian_matrix_CR,all_estimations_every_iter_CR,estimated_params_CA,network_topo,true_params);
+fig_ut.plot_sepcific_node_error_converg(all_estimations_every_iter_mc,estimates_mc_CA,direction_mc,true_params_mc);
+
+%-- 
+fig_ut.plot_MSE_error(direction_mc,all_estimations_every_iter_mc,true_params_mc);
+
+%-- Plot measurement errors of all neighhbors
+fig_ut.plot_errors_all_neighbors(network_topo.com_rad_CR, laplacian_matrix_CR, all_estimations_every_iter_CR, estimated_params_CA,network_topo,true_params);
+
+%-- 
+fig_ut.plot_MSE_for_all_neightbors(network_topo.com_rad_CR,laplacian_matrix_CR,estimated_params_CA,all_estimations_every_iter_CR,true_params,network_topo);
+
+%--
+fig_ut.plot_MSE_error_compare_DA_DS(direction_mc,all_estimations_every_iter_mc,estimates_mc_CA, true_params_mc);

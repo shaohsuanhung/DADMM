@@ -35,7 +35,35 @@ classdef make_figs
                 legend([legend_entries], 'Location', 'northeastoutside');
             end
             sgtitle('Parameters of interest (\theta) Estimations');
-        end 
+        end
+        function plot_converge_across_node_withCentrl(obj,all_estimations_every_iter,true_params,network_topo, all_estimations_centrl)
+            figure;
+            set(gcf,'Color','white');
+            set(gca,'FontSize',24);
+            for param = 1:4
+                subplot(2, 2, param);
+                hold on;  % Allows multiple plots on the same axes
+            
+                % Plot estimations for each node
+                for node = 1:network_topo.numNodes
+                    plot(squeeze(all_estimations_every_iter(param, node, :)), 'Color', obj.colors(node, :));
+                end
+            
+                % Plot true parameter as a dotted line
+                h_true = yline(true_params(param), '--k', 'LineWidth', 1.5);
+                h_centrl = yline(all_estimations_centrl(param), '--r', 'LineWidth', 1.5);
+            
+                hold off;
+                xlabel('Iterations (k)');
+                ylabel(['Parameter ' obj.labels_params{param} 'estimates']);
+                title([obj.labels_params{param}]);
+                legend_entries = arrayfun(@(x) ['Node ' num2str(x)], 1:network_topo.numNodes, 'UniformOutput', false);
+                legend_entries{end+1} = 'True Parameter';
+                legend_entries{end+1} = 'Centralized estimates';
+                legend([legend_entries], 'Location', 'northeastoutside');
+            end
+            sgtitle('Parameters of interest (\theta) Estimations');
+        end
 
         function plot_dual_primal_residual(obj,dual_residual_all,primal_residual_CR, all_estimations_every_iter_CR,laplacian_matrix_CR,network_topo)
             % Dual Residual Convergence

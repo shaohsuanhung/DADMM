@@ -169,12 +169,6 @@ classdef ADMM_utils
                                                              M, lambda, Sigma_big, n, neighbors, Nu, initial_values, update_z, c_penalty)
             ut = ADMM_utils;
             posterior = ut.MAP(params, range_measurements, doppler_measurements, mu_r, mu_d, sigma_r, sigma_d,radar_positions, numNodes, M, lambda, Sigma_big);
-
-            x_tar = params(1);
-            y_tar = params(2);
-            v_x = params(3);
-            v_y = params(4);
-        
             sum_L1 = 0;
             sum_L2 = 0;
             for j = neighbors{n}
@@ -289,7 +283,7 @@ classdef ADMM_utils
         end
         function [range_true, doppler_true, measurements_true] = gt_data_generation(r_true,d_true, mea_true,target,network_topo,env,M)
             % Matrices for range and Doppler true data (This is a matrix of M x N) 
-            % Range Measurement are stored in relation position way. 
+            % Range Measurement are stored in "relation position" way. 
             range_true = zeros(size(r_true));
             doppler_true = zeros(size(d_true));
             measurements_true = zeros(size(mea_true));
@@ -309,7 +303,64 @@ classdef ADMM_utils
                     measurements_true(2 * t, r) = doppler_true(t, r);    % Even index for Doppler
                 end
             end
-        
         end
+
+        function neighbors = get_neighbors(adj_mtx, numNodes)
+            % Initialize neighbors cell array
+            neighbors = cell(numNodes, 1);
+        
+            % Fill the neighbors for each node
+            for i = 1:numNodes
+                neighbors{i} = find(adj_mtx(i, :) > 0); % Find indices of non-zero elements in row i
+            end
+        end
+
+        function [range_with_error_cell,doppler_with_error_cell,numNodes_cell,radar_positions_cell,Sigma_big_1_cell,Sigma_big_2_cell,mu_r_cell,mu_d_cell,sigma_r_cell,sigma_d_cell] = pharse_measurements(laplacian_matrix, range_with_error, doppler_with_error, mu_r, mu_d, sigma_r, sigma_d, network_topo, M)
+            for n = 1: network_topo.numNodes
+                current_neighbors = find(laplacian_matrix(n, :) ~= 0);
+                k = 0;
+                Sigma_big_1 = [];
+                Sigma_big_2 = [];
+                range_with_error_1 =[];
+                doppler_with_error_1 = [];
+                radar_positions_1 = [];
+                for j = current_neighbors
+                    k = k+1;
+                    % 
+                    range_with_error_1(:,k) = range_with_error(:,j);
+                    doppler_with_error_1(:,k) = doppler_with_error(:,j);
+                    radar_positions_1(k,:) = network_topo.radar_pos(j,:);
+                    numNodes_1 = length(current_neighbors);
+                    mu_r_neighbor(:,k) = mu_r(k);
+                    mu_d_neighbor(:,k) = mu_d(k);
+                    sigma_r_neighbor(:,k) = sigma_r(k);
+                    sigma_d_neighbor(:,k) = sigma_d(k);
+                    for i =1:M
+                        base_idx = 2 * (M * (j - 1) + (i - 1)) + 1;
+                        sigma_r2 = Sigma_big(base_idx, base_idx);
+                        Sigma_big_1(((k-1)*M + (i-1))*2 + 1) = sigma_r2; 
+                        sigma_fd2 = Sigma_big(base_idx + 1, base_idx + 1);
+                        Sigma_big_1(((k-1)*M + (i-1))*2 + 2) = sigma_fd2;
+                    end
+                    Sigma_big_2 = diag(Sigma_big_1);
+                    % Store the values in cell arrays
+                    range_with_error_cell{n} = range_with_error_1;
+                    doppler_with_error_cell{n} = doppler_with_error_1;
+                    numNodes_cell{n} = numNodes_1;
+                    radar_positions_cell{n} = radar_positions_1;
+                    Sigma_big_1_cell{n} = Sigma_big_1;
+                    Sigma_big_2_cell{n} = Sigma_big_2;
+                    mu_r_cell{n}        = mu_r(j);
+                    mu_d_cell{n}        = mu_d(j);
+                    sigma_r_cell{n}     = sigma_r(j);
+                    sigma_d_cell{n}     = sigma_d(j);
+                    % Prior
+                    % mu_d_cell{n} = mu_r_neighbor;
+                    % mu_r_cell{n} = mu_d_neighbor;
+                    % sigma_r_cell{n} = sigma_r_neighbor;
+                    % sigma_d_cell{n} = sigma_d_neighbor; 
+                end
+            end
+        end 
     end
 end

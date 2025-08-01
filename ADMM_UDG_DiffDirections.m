@@ -264,7 +264,8 @@ for mc = 1:num_monte_carlo
     
         % 2x2 covariance matrix Sigma
         Sigma = [range_var, rho * range_sd * doppler_sd; rho * range_sd * doppler_sd, doppler_var];
-    
+        %%%%%%%%%
+        %%%%%%%%%
         total_measurements = numNodes * M;
     
         % Sigma_big is of the size 2NM x 2NM, 2=two params, NM=total mea
@@ -364,7 +365,7 @@ for mc = 1:num_monte_carlo
         max_iterations = 1e5;
 %     %                 c_penalty = 10^14;
         c_penalty = [10^2, 10^2, 3*5, 3*5]; % For SNR 50dB
-%         c_penalty = [10^4, 10^4, 3*10^2, 3*10^2];
+        % c_penalty = [10^6, 10^6, 3*10^3, 3*10^3];
         initial_values = repmat([1000, 1000, 10, 10]', 1,numNodes);
         Nu = cell(1, numNodes);
         Nu_prev = cell(1, numNodes);
