@@ -132,8 +132,8 @@ for mc = 1:num_monte_carol
         
         % Calculate Noise for range and Doppler from signal model
         % TODO: This can also be set into env. params
-        range_var = (3 * env.c^2) / (8 * pi^2 * B(1)^2 * SNR_lin) ;
-        doppler_var = (3 * ((fs(1))^2)) / (pi^2 * SNR_lin * M^3) ;
+        range_var = (3 * env.c^2) / (8 * pi^2 * env.B(1)^2 * SNR_lin) ;
+        doppler_var = (3 * ((env.fs(1))^2)) / (pi^2 * SNR_lin * M^3) ;
         range_sd = sqrt(range_var);
         doppler_sd = sqrt(doppler_var);
         rho = 0.0;  
@@ -261,10 +261,11 @@ for mc = 1:num_monte_carol
         % Pharse_measurements
         [range_with_error_cell,doppler_with_error_cell,numNodes_cell,...
         radar_positions_cell,Sigma_big_1_cell,Sigma_big_2_cell,...
-        mu_r_cell,mu_d_cell,sigma_r_cell,sigma_d_cell] = pharse_measurements(laplacian_matrix, ...
+        mu_r_cell,mu_d_cell,sigma_r_cell,sigma_d_cell] = ut.pharse_measurements(laplacian_matrix, ...
+        range_with_error, doppler_with_error, mu_r, mu_d, sigma_r, sigma_d,Sigma_big,...
         range_with_error_cell, doppler_with_error_cell, ...
         mu_r_cell, mu_d_cell, sigma_r_cell, sigma_d_cell, network_topo, M);
-    
+
         %% Distributed consensus algor.
         % %%TODO: Set the distributed algor. config
         % Init.

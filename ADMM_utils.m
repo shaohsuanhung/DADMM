@@ -315,7 +315,12 @@ classdef ADMM_utils
             end
         end
 
-        function [range_with_error_cell,doppler_with_error_cell,numNodes_cell,radar_positions_cell,Sigma_big_1_cell,Sigma_big_2_cell,mu_r_cell,mu_d_cell,sigma_r_cell,sigma_d_cell] = pharse_measurements(laplacian_matrix, range_with_error, doppler_with_error, mu_r, mu_d, sigma_r, sigma_d, network_topo, M)
+        function [range_with_error_cell,doppler_with_error_cell,numNodes_cell,...
+                  radar_positions_cell,Sigma_big_1_cell,Sigma_big_2_cell,...
+                  mu_r_cell,mu_d_cell,sigma_r_cell,sigma_d_cell] = pharse_measurements(laplacian_matrix, ...
+        range_with_error, doppler_with_error, mu_r, mu_d, sigma_r, sigma_d,Sigma_big,...
+        range_with_error_cell, doppler_with_error_cell, ...
+        mu_r_cell, mu_d_cell, sigma_r_cell, sigma_d_cell, network_topo, M)
             for n = 1: network_topo.numNodes
                 current_neighbors = find(laplacian_matrix(n, :) ~= 0);
                 k = 0;
@@ -350,15 +355,15 @@ classdef ADMM_utils
                     radar_positions_cell{n} = radar_positions_1;
                     Sigma_big_1_cell{n} = Sigma_big_1;
                     Sigma_big_2_cell{n} = Sigma_big_2;
-                    mu_r_cell{n}        = mu_r(j);
-                    mu_d_cell{n}        = mu_d(j);
-                    sigma_r_cell{n}     = sigma_r(j);
-                    sigma_d_cell{n}     = sigma_d(j);
+                    % mu_r_cell{n}        = mu_r(j);
+                    % mu_d_cell{n}        = mu_d(j);
+                    % sigma_r_cell{n}     = sigma_r(j);
+                    % sigma_d_cell{n}     = sigma_d(j);
                     % Prior
-                    % mu_d_cell{n} = mu_r_neighbor;
-                    % mu_r_cell{n} = mu_d_neighbor;
-                    % sigma_r_cell{n} = sigma_r_neighbor;
-                    % sigma_d_cell{n} = sigma_d_neighbor; 
+                    mu_d_cell{n} = mu_r_neighbor;
+                    mu_r_cell{n} = mu_d_neighbor;
+                    sigma_r_cell{n} = sigma_r_neighbor;
+                    sigma_d_cell{n} = sigma_d_neighbor; 
                 end
             end
         end 
