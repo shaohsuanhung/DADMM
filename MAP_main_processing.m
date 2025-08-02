@@ -11,7 +11,7 @@ gt_paras_mc = zeros(num_monte_carol,4);
 network_topo.numNodes = 10;
 theta = linspace(0,2*pi, network_topo.numNodes+1);
 network_topo.theta = theta(1:end-1);
-network_topo.com_rad_CR = 5000; % communication radius range
+network_topo.com_rad_CR = 3000; % communication radius range
 network_topo.radius = 3000;     % spatial placement radius 
 network_topo.radar_pos = network_topo.radius * [cos(network_topo.theta); sin(network_topo.theta)]';
 network_topo.C_distance = 1;  % Cost per meter
@@ -25,7 +25,7 @@ for i = 1:network_topo.numNodes
 end
 
 knn = 5;
-com_rad_CR= 5000; % Communication radius in CD
+com_rad_CR= 3000; % Communication radius in CD
 
 
 % Signal and environment parameters
@@ -84,13 +84,6 @@ for mc = 1:num_monte_carol
     disp(node_range);
     disp('Number of Measurements:');
     disp(M_values);
-
-    % 
-    
-    global estimated_para_values;
-    global log_likelihood_values;
-    log_likelihood_values = [];
-    estimates_mc = [];
     
     % Initialize the adjacency matrix
     adj_matrix = zeros(network_topo.numNodes, network_topo.numNodes);
@@ -142,18 +135,17 @@ for mc = 1:num_monte_carol
         total_measurements = numNodes * M;    
     
         % Sigma_big is of the size 2NM x 2NM, 2= (range, doppler), 
+         % Generate range and Doppler shift's noisy measurements
         Sigma_big = kron(eye(total_measurements), Sigma);
         noise_matrix = mvnrnd(zeros(2 * total_measurements, 1), Sigma_big)';
-        % Generate range and Doppler shift's noisy measurements
         range_noise = noise_matrix(1:2:end);
         range_noise_all = reshape(range_noise, M, numNodes);
         doppler_noise = noise_matrix(2:2:end);
         doppler_noise_all = reshape(doppler_noise, M, numNodes);
     
+        % y_hat = y_gt + noise
         range_with_error = range_true + range_noise_all;
         doppler_with_error = doppler_true + doppler_noise_all;
-    
-        % y_hat = y_gt + noise
         measurements_with_error_all = measurements_true_all + noise_matrix;
         
         range_with_error_CA = range_with_error;
@@ -185,68 +177,6 @@ for mc = 1:num_monte_carol
         %% Start the sensing, assign the measuremnet (range, doppler) to sensor network 
         % Have M brust, for N nodes. per parameters. We have (r, v) as params.
         % This can be replaced by loop over $neighbors var?
-        % range_with_error_cell = cell(1, numNodes);
-        % doppler_with_error_cell = cell(1, numNodes);
-        % numNodes_cell = cell(1, numNodes);
-        % radar_positions_cell = cell(1, numNodes);
-        % Sigma_big_1_cell = cell(1, numNodes);
-        % Sigma_big_2_cell = cell(1, numNodes);
-        % mu_r_cell = cell(1,network_topo.numNodes);
-        % mu_d_cell = cell(1,network_topo.numNodes);
-        % sigma_r_cell = cell(1,network_topo.numNodes);
-        % sigma_d_cell = cell(1,network_topo.numNodes);
-        % for n = 1: network_topo.numNodes
-        %     current_neighbors = find(laplacian_matrix(n, :) ~= 0);
-        %     k = 0;
-        %     Sigma_big_1 = [];
-        %     Sigma_big_2 = [];
-        %     range_with_error_1 =[];
-        %     doppler_with_error_1 = [];
-        %     radar_positions_1 = [];
-        %     for j = current_neighbors
-        %         k = k+1;
-        %         % 
-        %         range_with_error_1(:,k) = range_with_error(:,j);
-        %         doppler_with_error_1(:,k) = doppler_with_error(:,j);
-        %         radar_positions_1(k,:) = network_topo.radar_pos(j,:);
-        %         numNodes_1 = length(current_neighbors);
-        %         mu_r_neighbor(:,k) = mu_r(k);
-        %         mu_d_neighbor(:,k) = mu_d(k);
-        %         sigma_r_neighbor(:,k) = sigma_r(k);
-        %         sigma_d_neighbor(:,k) = sigma_d(k);
-
-        %         for i =1:M
-        %             base_idx = 2 * (M * (j - 1) + (i - 1)) + 1;
-        %             sigma_r2 = Sigma_big(base_idx, base_idx);
-        %             Sigma_big_1(((k-1)*M + (i-1))*2 + 1) = sigma_r2; 
-        %             sigma_fd2 = Sigma_big(base_idx + 1, base_idx + 1);
-        %             Sigma_big_1(((k-1)*M + (i-1))*2 + 2) = sigma_fd2;
-
-        %         end
-        %         Sigma_big_2 = diag(Sigma_big_1);
-
-        %         % Store the values in cell arrays
-        %         range_with_error_cell{n} = range_with_error_1;
-        %         doppler_with_error_cell{n} = doppler_with_error_1;
-        %         numNodes_cell{n} = numNodes_1;
-        %         radar_positions_cell{n} = radar_positions_1;
-        %         Sigma_big_1_cell{n} = Sigma_big_1;
-        %         Sigma_big_2_cell{n} = Sigma_big_2;
-
-        %         mu_r_cell{n}        = mu_r(j);
-        %         mu_d_cell{n}        = mu_d(j);
-        %         sigma_r_cell{n}     = sigma_r(j);
-        %         sigma_d_cell{n}     = sigma_d(j);
-        %         % Prior
-        %         % mu_d_cell{n} = mu_r_neighbor;
-        %         % mu_r_cell{n} = mu_d_neighbor;
-        %         % sigma_r_cell{n} = sigma_r_neighbor;
-        %         % sigma_d_cell{n} = sigma_d_neighbor; 
-
-
-        %     end
-        % end
-
         range_with_error_cell = cell(1, numNodes);
         doppler_with_error_cell = cell(1, numNodes);
         numNodes_cell = cell(1, numNodes);
@@ -274,11 +204,11 @@ for mc = 1:num_monte_carol
         tolerance = 1e-2;
         % tolerance = 1e-2;
         max_iterations = 300;
-        % c_penalty = [10^2, 10^2, 3, 3]; % For SNR 50dB
-        % c_penalty = [1e2,1e2, 3e5, 3e5]; % For SNR 50dxB
-        c_penalty = [1e2,1e2,3e3,3e3];
-        initial_values = repmat([1000, 1000, 14, 14]', 1,numNodes);
-        % initial_values = repmat([1000, 1000, 17, 17]', 1,numNodes);
+        c_penalty = [1, 1, 10, 10]; % For SNR 50dB
+        % c_penalty = [1e3,1e3, 3e5, 3e5]; % For SNR 50dxB
+        % c_penalty = [1e2,1e2,3e3,3e3];
+        % initial_values = repmat([1000, 1000, 10, 10]', 1,numNodes);
+        initial_values = repmat([1000, 1000, 17, 17]', 1,numNodes);
         Nu = cell(1, numNodes);
         Nu_prev = cell(1, numNodes);
         update_z = cell(1, numNodes);
@@ -291,12 +221,12 @@ for mc = 1:num_monte_carol
     
         % Define the parameters for adaptive penalty update
         % Define more conservative parameters for adaptive penalty update
-        tau_incr = [2.01, 2.01, 2.1, 2.1];  % Smaller increase factor
-        tau_decr = [2.01, 2.01, 2.1, 2.1];  % Smaller decrease factor
+        % tau_incr = [2.01, 2.01, 2.1, 2.1];  % Smaller increase factor
+        % tau_decr = [2.01, 2.01, 2.1, 2.1];  % Smaller decrease factor
         % tau_incr = [50, 50, 50, 50];  % Smaller increase factor
         % tau_decr = [50, 50, 50, 50];  % Smaller decrease factor
-        % tau_incr = [1.1, 1.1, 1.1, 1.1];  % Smaller increase factor
-        % tau_decr = [1.1, 1.1, 1.1, 1.1];  % Smaller decrease factor
+        tau_incr = [1.1, 1.1, 1.1, 1.1];  % Smaller increase factor
+        tau_decr = [1.1, 1.1, 1.1, 1.1];  % Smaller decrease factor
         mu = [3,3,10,10];          % Slightly smaller threshold ratio
         alpha = [0.5, 0.5, 0.5, 0.5];  % Damping factor
     
