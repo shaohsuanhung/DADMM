@@ -218,7 +218,12 @@ for mc = 1:num_monte_carol
         dual_residual_all = [];
         dual_residual_by_para = cell(1,numNodes);
         all_estimations_every_iter = [];
-    
+        RANGE_Xs = [];
+        RANGE_Ys = [];
+        DOPPLER_Xs = [];
+        DOPPLER_Ys = [];
+        converg_r = false;
+        converg_d = false;
         % Define the parameters for adaptive penalty update
         % Define more conservative parameters for adaptive penalty update
         % tau_incr = [2.01, 2.01, 2.1, 2.1];  % Smaller increase factor
@@ -291,15 +296,15 @@ for mc = 1:num_monte_carol
             primal_residual_by_para{iteration} = primal_residual_params;
             dual_residual_by_para{iteration}   = dual_residual_params; 
 
-            % Stop criterion
-            if primal_residual < tolerance
-                break;
-            end
+            % Stop criterion, vanilia stop criterion
+            % if primal_residual < tolerance
+            %     break;
+            % end
     
-            if iteration == max_iterations
-                break;
-            end
-            
+            % if iteration == max_iterations
+            %     break;
+            % end
+
             % % Every 30 iteration, 
             % if mod(iteration, 30) == 0
             %     % Update the penalty parameter based on the residuals
@@ -316,11 +321,49 @@ for mc = 1:num_monte_carol
             elseif dual_residual < 10*primal_residual
                 c_penalty = c_penalty .* ((tau_decr).^(-1));
             end
-    
+            
             % Update the cur. term to next term (k -> k-1)
+            % Replace the results
             initial_values = all_estimations;
             update_z_prev = update_z;
             Nu_prev = Nu;
+
+            % algor. 2, by checking the primal residual of range and primal residual of doppler
+            % if primal_residual < tolerance && dual_residual < tolerance
+            if norm(primal_residual_by_para{iteration}(1:2)) < tolerance
+                converg_r = true;
+                % Set the store range value of primal residual
+                if isempty(RANGE_Xs)
+                    RANGE_Xs = all_estimations(1,:);
+                end
+                if isempty(RANGE_Ys)
+                    RANGE_Ys = all_estimations(2,:);
+                end
+                if not(isempty(RANGE_Xs)) && not(isempty(RANGE_Ys))
+                    % Replace 
+                    all_estimations(1,:) = RANGE_Xs;
+                    all_estimations(2,:) = RANGE_Ys;
+                end
+  
+            end
+            if norm(primal_residual_by_para{iteration}(3:4)) < tolerance
+                converg_d = true;
+                % Set the store doppler value of primal residual
+                if isempty(DOPPLER_Xs)
+                    DOPPLER_Xs = all_estimations(3,:);
+                end
+                if isempty(DOPPLER_Ys)
+                    DOPPLER_Ys = all_estimations(4,:);
+                end
+                if not(isempty(DOPPLER_Ys)) && not(isempty(DOPPLER_Xs))
+                    % Replace 
+                    all_estimations(3,:) = DOPPLER_Xs;
+                    all_estimations(4,:) = DOPPLER_Ys;
+                end
+            end
+            if (converg_r && converg_d) || (iteration == max_iterations)
+                converged = true;
+            end        
         
         end
         
