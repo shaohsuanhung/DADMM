@@ -1,5 +1,6 @@
 clc; close all; clear;
 ut = ADMM_utils;
+DEBUG=true; % To see verbose
 %TODO: 
 % 1. Write a text file to export config. / parameters setup of the run
 % 2. Make the algorithm to be parallel computing?
@@ -201,14 +202,15 @@ for mc = 1:num_monte_carol
         % Init.
         converged = false;
         iteration = 0;
-        tolerance = 1e-2;
+        tolerance = 1e-4;
         % tolerance = 1e-2;
         max_iterations = 300;
-        c_penalty = [1, 1, 10, 10]; % For SNR 50dB
+        c_penalty = [10, 10, 10, 10]; % For SNR 50dB
+        % c_penalty = [10^2, 10^2, 3*5, 3*5]; % For SNR 50dB
         % c_penalty = [1e3,1e3, 3e5, 3e5]; % For SNR 50dxB
         % c_penalty = [1e2,1e2,3e3,3e3];
         % initial_values = repmat([1000, 1000, 10, 10]', 1,numNodes);
-        initial_values = repmat([1000, 1000, 17, 17]', 1,numNodes);
+        initial_values = repmat([1000, 1000, 10, 10]', 1,numNodes);
         Nu = cell(1, numNodes);
         Nu_prev = cell(1, numNodes);
         update_z = cell(1, numNodes);
@@ -246,10 +248,11 @@ for mc = 1:num_monte_carol
         % Start optmization
         while ~converged && iteration < max_iterations
             iteration = iteration+1;
+            fprintf('ADMM iteration: %d\n', iteration);
             for n = 1: network_topo.numNodes
                 for j = neighbors{n}
-                    % Eq. (4.17c)
-                    Nu{n}(:,j) = Nu_prev{n}(:,j) + c_penalty' .* (initial_values(:,n) - update_z_prev{n}(:,j));
+                        % Eq. (4.17c)
+                        Nu{n}(:,j) = Nu_prev{n}(:,j) + c_penalty' .* (initial_values(:,n) - update_z_prev{n}(:,j));
                 end
                 % Eq. (4.17a)
                 % fun = @(params) ut.logLikelihoodWithConsensus(params, range_with_error_cell{n}, doppler_with_error_cell{n}, radar_positions_cell{n},numNodes_cell{n}, M, env.lambda, Sigma_big_2_cell{n}, n, neighbors, Nu, initial_values, update_z_prev, c_penalty);
@@ -271,30 +274,31 @@ for mc = 1:num_monte_carol
                 end
             end
             
-            
-            
-            
             % Calculate residual, for monitor convergence
             primal_residual = 0;
             dual_residual = 0; 
-            primal_residual_params = zeros(4,10);
-            dual_residual_params   = zeros(4,10);
+            primal_residual_params = zeros(4, 1);
+            dual_residual_params   = zeros(4, 1);
+            prima_residual_by_node = zeros(4,network_topo.numNodes);
+            dual_residual_by_node  = zeros(4,network_topo.numNodes);
             for n = 1: network_topo.numNodes
                 for j = neighbors{n}
                     % Calculate the primal residual, Eq.4.18
-                    primal_residual = primal_residual + norm(all_estimations(:,n) - update_z{n}(:,j), 2)^2;
-                    % primal_residual = primal_residual + norm(all_estimations(:,n) - update_z{n}(:,j), 2);
+                    % primal_residual = primal_residual + norm(all_estimations(:,n) - update_z{n}(:,j), 2)^2;
+                    primal_residual = primal_residual + norm(all_estimations(:,n) - update_z{n}(:,j), 2);
                     primal_residual_params = primal_residual_params + abs(all_estimations(:,n) - update_z{n}(:,j));
                     % Calculate the dual residual, Eq.4.19
-                    dual_residual = dual_residual + norm(Nu{n}(:,j) - Nu_prev{n}(:,j))^2;
-                    % dual_residual = dual_residual + norm(Nu{n}(:,j) - Nu_prev{n}(:,j));
+                    % dual_residual = dual_residual + norm(Nu{n}(:,j) - Nu_prev{n}(:,j))^2;
+                    dual_residual = dual_residual + norm(Nu{n}(:,j) - Nu_prev{n}(:,j));
                     dual_residual_params = dual_residual_params + abs(Nu{n}(:,j) - Nu_prev{n}(:,j));
                 end
+                prima_residual_by_node(:,n) = primal_residual_params;
+                dual_residual_by_node(:,n)  = dual_residual_params;
             end
             primal_residual_all(iteration)     = primal_residual;
             dual_residual_all(iteration)       = dual_residual;
-            primal_residual_by_para{iteration} = primal_residual_params;
-            dual_residual_by_para{iteration}   = dual_residual_params; 
+            primal_residual_by_para{iteration} = prima_residual_by_node;
+            dual_residual_by_para{iteration}   = dual_residual_by_node; 
 
             % Stop criterion, vanilia stop criterion
             % if primal_residual < tolerance
@@ -334,29 +338,46 @@ for mc = 1:num_monte_carol
                 converg_r = true;
                 % Set the store range value of primal residual
                 if isempty(RANGE_Xs)
+                    if DEBUG
+                        disp("[Debug] Range X params converge"+norm(primal_residual_by_para{iteration}(1:2))+"<"+tolerance);
+                    end
                     RANGE_Xs = all_estimations(1,:);
                 end
                 if isempty(RANGE_Ys)
+                    if DEBUG
+                        disp("[Debug] Range Y params converge"+norm(primal_residual_by_para{iteration}(1:2))+"<"+tolerance);
+                    end
                     RANGE_Ys = all_estimations(2,:);
                 end
                 if not(isempty(RANGE_Xs)) && not(isempty(RANGE_Ys))
                     % Replace 
+                    if DEBUG
+                        disp("[Debug] Replace Range estimations "+mean(all_estimations(1,:))+","+mean(all_estimations(2,:))+" with "+mean(RANGE_Xs)+","+mean(RANGE_Ys)+")");
+                    end
                     all_estimations(1,:) = RANGE_Xs;
                     all_estimations(2,:) = RANGE_Ys;
                 end
-  
             end
             if norm(primal_residual_by_para{iteration}(3:4)) < tolerance
                 converg_d = true;
                 % Set the store doppler value of primal residual
                 if isempty(DOPPLER_Xs)
+                    if DEBUG
+                        disp("[Debug] Doppler X params converge"+norm(primal_residual_by_para{iteration}(3:4))+"<"+tolerance);
+                    end
                     DOPPLER_Xs = all_estimations(3,:);
                 end
                 if isempty(DOPPLER_Ys)
                     DOPPLER_Ys = all_estimations(4,:);
+                    if DEBUG
+                        disp("[Debug] Doppler Y params converge"+norm(primal_residual_by_para{iteration}(3:4))+"<"+tolerance);
+                    end
                 end
                 if not(isempty(DOPPLER_Ys)) && not(isempty(DOPPLER_Xs))
                     % Replace 
+                    if DEBUG
+                        disp("[Debug] Replace Doppler estimations "+mean(all_estimations(3,:))+","+mean(all_estimations(4,:))+" with "+mean(DOPPLER_Xs)+","+mean(DOPPLER_Ys)+")");
+                    end
                     all_estimations(3,:) = DOPPLER_Xs;
                     all_estimations(4,:) = DOPPLER_Ys;
                 end
@@ -398,7 +419,7 @@ fig_ut.plot_converge_across_node_withCentrl(all_estimations_every_iter,true_para
 % fig_ut.plot_specific_node_converg(node_to_show,com_rad_CR,laplacian_matrix_CR,all_estimations_every_iter_CR,estimated_params_CA,network_topo,true_params);
 % fig_ut.plot_sepcific_node_error_converg(all_estimations_every_iter_mc,estimates_mc_CA,direction_mc,true_params_mc);
 % 
-% %-- 
+%-- 
 % fig_ut.plot_MSE_error(direction_mc,all_estimations_every_iter_mc,true_params_mc);
 % 
 % %-- Plot measurement errors of all neighhbors
@@ -422,3 +443,4 @@ fig_ut.plot_converge_across_node_withCentrl(all_estimations_every_iter,true_para
 %     end 
 %     set(gca, 'YScale', 'log');
 % end
+

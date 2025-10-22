@@ -54,17 +54,16 @@ classdef make_figs
                 h_centrl = yline(all_estimations_centrl(param), '--r', 'LineWidth', 1.5);
             
                 hold off;
-                xlabel('Iterations (k)');
+                xlabel('Iterations');
                 ylabel(['Parameter ' obj.labels_params{param} 'estimates']);
                 title([obj.labels_params{param}]);
                 legend_entries = arrayfun(@(x) ['Node ' num2str(x)], 1:network_topo.numNodes, 'UniformOutput', false);
                 legend_entries{end+1} = 'True Parameter';
-                legend_entries{end+1} = 'Centralized estimates';
+                legend_entries{end+1} = 'Centralized';
                 legend([legend_entries], 'Location', 'northeastoutside');
             end
             sgtitle('Parameters of interest (\theta) Estimations');
         end
-
         function plot_dual_primal_residual(obj,dual_residual_all,primal_residual_CR, all_estimations_every_iter_CR,laplacian_matrix_CR,network_topo)
             % Dual Residual Convergence
             figure;
@@ -96,7 +95,6 @@ classdef make_figs
             legend(legendNames, 'Location', 'best');  % Add legend with node ratios
 
         end
-
         function plot_specific_node_converg(obj,nodeID,com_rad_CR,laplacian_matrix_CR,all_estimations_every_iter_CR,estimated_params_CA, network_topo,true_params)
             % Plot Convergance of theta for various node ratios
             display_node = nodeID;
@@ -142,7 +140,6 @@ classdef make_figs
             sgtitle({'Convergence of parameters of interest ($\theta_n$) at $n^{\mathrm{th}}$ node for different communication radius'}, 'Interpreter', 'latex');
             % sgtitle({'Convergence of parameters of interest ($\theta_n$) at',nodeID ,'th node for different communication radius'}, 'Interpreter', 'latex');
         end
-
         function plot_sepcific_node_error_converg(obj,all_estimations_every_iter_mc,estimates_mc_CA,direction_mc,true_params_mc)
             
             colors_size = size(direction_mc, 1);
@@ -190,7 +187,6 @@ classdef make_figs
             sgtitle({'Error convergence for parameters of interest ($\theta_n$) at $n^{\mathrm{th}}$ node for different communication radius'}, 'Interpreter', 'latex');
 
         end
-
         function plot_MSE_error(obj,direction_mc,all_estimations_every_iter_mc,true_params_mc)
             % Plot MSE Error (Estimated(with neighbors ratio) - True Params).^2
             % Plotting Errors (\hat{\theta} - \theta).^2 results
@@ -237,7 +233,6 @@ classdef make_figs
             end    
             sgtitle({'MSE convergence for parameters of interest ($\theta_n$) at $n^{\mathrm{th}}$ node for different communication radius'}, 'Interpreter', 'latex');
         end 
-        
         function plot_errors_all_neighbors(obj, com_rad_CR, laplacian_matrix_CR,all_estimations_every_iter_CR, estimated_params_CA, network_topo,true_params)
             % Plotting Errors (\hat{\theta} - \theta) results for all neighbors
             display_node = 1;
@@ -284,7 +279,6 @@ classdef make_figs
             
             sgtitle({'$\left(\hat{\theta}_n - \theta\right)$ for different neighbor nodes'}, 'Interpreter', 'latex');
         end 
-
         function plot_MSE_for_all_neightbors(obj,com_rad_CR,laplacian_matrix_CR,estimated_params_CA,all_estimations_every_iter_CR,true_params,network_topo)
             % For MSE fo all neighbors
             display_node = 1;
@@ -331,7 +325,6 @@ classdef make_figs
             
             sgtitle({'$\left(\hat{\theta}_n - \theta\right)^2$ for Different neighbors ratio'}, 'Interpreter', 'latex');
         end
-
         function plot_MSE_error_compare_DA_DS(obj,direction_mc,all_estimations_every_iter_mc,estimates_mc_CA, true_params_mc)
             % Plot MSE error for (\hat{\theta} - \theta).^2 with Decentralized as straight line and distributed as dashed
             display_node = 5;

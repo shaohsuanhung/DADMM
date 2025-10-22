@@ -361,12 +361,12 @@ for mc = 1:num_monte_carlo
         % Initialization
         converged = false;
         iteration = 0;
-        tolerance = 1e-4;
+        tolerance = 1e-2;
         max_iterations = 1e5;
 %     %                 c_penalty = 10^14;
         c_penalty = [10^2, 10^2, 3*5, 3*5]; % For SNR 50dB
         % c_penalty = [10^6, 10^6, 3*10^3, 3*10^3];
-        initial_values = repmat([1000, 1000, 10, 10]', 1,numNodes);
+        initial_values = repmat([1000,1000, 10, 10]', 1,numNodes);
         Nu = cell(1, numNodes);
         Nu_prev = cell(1, numNodes);
         update_z = cell(1, numNodes);
@@ -466,7 +466,7 @@ for mc = 1:num_monte_carlo
                 estimated_params = fmincon(fun, initial_values(:,n),[],[],[],[], lb, ub, [],options_DA);
                 all_estimations(:,n) = estimated_params;
 
-
+ 
             end
             all_estimations_every_iter(:,:,iteration) = all_estimations;
 
@@ -484,10 +484,10 @@ for mc = 1:num_monte_carlo
             for n = 1:numNodes
                 for j = neighbors{n}
                     % Calculate the primal residual
-                    primal_residual = primal_residual + norm(all_estimations(:,n) - update_z{n}(:,j), 2)^2;
+                    primal_residual = primal_residual + sqrt(norm(all_estimations(:,n) - update_z{n}(:,j), 2)^2);
             
                     % Calculate the dual residual
-                    dual_residual = dual_residual + norm(Nu{n}(:,j) - Nu_prev{n}(:,j))^2;
+                    dual_residual = dual_residual + sqrt(norm(Nu{n}(:,j) - Nu_prev{n}(:,j))^2);
                 end
             end
             
