@@ -377,5 +377,60 @@ classdef make_figs
             sgtitle('$\left(\hat{\theta}_n - \theta\right)^2$ for different directions with 19/20 neighbors', 'Interpreter', 'latex');
 
         end
+
+        function plot_predictions(obj, time_vector, all_predictions, true_trajectory, network_topo)
+            figure;
+            set(gcf,'Color','white');
+            set(gca,'FontSize',24);
+            subplot(2,1,1);
+            hold on;
+            for t = 1: length(time_vector)
+                plot(all_predictions{t}(:,1),all_predictions{t}(:,2),'o','Color',[0.8 0.8 0.8]);
+                plot(true_trajectory(1,t),true_trajectory(2,t),'k*','MarkerSize',10);
+            end
+            for node = 1:network_topo.numNodes
+                plot(time_vector, squeeze(all_predictions(1, node, :)), 'Color', obj.colors(node, :));
+            end
+            plot(time_vector, true_trajectory(1, :), '--k', 'LineWidth', 1.5);
+            hold off;
+            xlabel('Time (s)');
+            ylabel('Position x (m)');
+            title('Position x Predictions');
+            legend_entries = arrayfun(@(x) ['Node ' num2str(x)], 1:network_topo.numNodes, 'UniformOutput', false);
+            legend_entries{end+1} = 'True Trajectory';
+            legend([legend_entries], 'Location', 'northeastoutside');
+            
+            subplot(2,1,2);
+            hold on;
+            for node = 1:network_topo.numNodes
+                plot(time_vector, squeeze(all_predictions(2, node, :)), 'Color', obj.colors(node, :));
+            end
+            plot(time_vector, true_trajectory(2, :), '--k', 'LineWidth', 1.5);
+            hold off;
+            xlabel('Time (s)');
+            ylabel('Position y (m)');
+            title('Position y Predictions');
+            legend_entries = arrayfun(@(x) ['Node ' num2str(x)], 1:network_topo.numNodes, 'UniformOutput', false);
+            legend_entries{end+1} = 'True Trajectory';
+            legend([legend_entries], 'Location', 'northeastoutside');
+        end
+
+        function plot_trajectory(obj, true_trajectory, estimated_trajectory)
+            % Shape of the inputs:
+            % true_trajectory: [Num target, track_time, 2]
+            % estimated_trajectory: cell(track_time): [4 x 1]
+            estimated_trajectory = cell2mat(estimated_trajectory);
+            figure;
+            set(gcf,'Color','white');
+            set(gca,'FontSize',24);
+            hold on;
+            plot(true_trajectory(1, :, 1), true_trajectory(1, :, 2), '--ok', 'LineWidth', 1.5, 'DisplayName', 'True Trajectory');
+            plot(estimated_trajectory(1,:), estimated_trajectory(2,:), '--ob', 'LineWidth', 1.5, 'DisplayName', 'Estimated Trajectory');
+            hold off;
+            xlabel('Position x (m)');
+            ylabel('Position y (m)');
+            title('Target Trajectory');
+            legend('Location', 'northeastoutside');
+        end
     end
 end

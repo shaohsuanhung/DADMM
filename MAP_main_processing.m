@@ -1,6 +1,7 @@
 clc; close all; clear;
 ut = ADMM_utils;
 DEBUG=true; % To see verbose
+TYPE="MLE";
 %TODO: 
 % 1. Write a text file to export config. / parameters setup of the run
 % 2. Make the algorithm to be parallel computing?
@@ -44,9 +45,8 @@ M_values = 64; % Time_step = 1e-4, means for the time interval of burst is 1e-4.
 % node_range = 20:3:20;
 node_range = 10;
 
-options_DA = optimoptions('fmincon', 'Display', 'off', ScaleProblem=true, OptimalityTolerance=1e-6, FunctionTolerance=1e-6, StepTolerance=1e-6, MaxIterations=100);
+options_DA = optimoptions('fmincon', 'Display', 'off', ScaleProblem=true, OptimalityTolerance=1e-6, FunctionTolerance=1e-6, StepTolerance=1e-6, MaxIterations=100000);
 options_CA = optimoptions('fmincon', 'Display', 'off', ScaleProblem=true, OptimalityTolerance=1e-6, FunctionTolerance=1e-6, StepTolerance=1e-6, MaxIterations=100000);
-
 
 %-- Start the MC simulation
 for mc = 1:num_monte_carol
@@ -154,23 +154,45 @@ for mc = 1:num_monte_carol
         
         % Prior knowledge of measurements
         % Assume independent mea. of mu and doppler 
-        mu_r = mean(range_with_error);
-        sigma_r   = var(range_with_error);
-        mu_d = mean(doppler_with_error);
-        sigma_d = var(doppler_with_error);
+        prior_mu = cell(1, numNodes);
+        prior_sigma = cell(1, numNodes);
+        if TYPE == "MAP"
+            % mu_r = mean(range_with_error);
+            % sigma_r   = var(range_with_error);
+            % mu_d = mean(doppler_with_error);
+            % sigma_d = var(doppler_with_error);
+            prior_mu = repmat({[1000; 1000; 0; 0]}, 1,numNodes);
+            prior_sigma = repmat({eye(4)}, 1,numNodes);
+            prior_sigma = repmat({[range_var,0,0,0; ...
+                                    0,range_var,0,0;...
+                                    0,0,doppler_var,0;...
+                                    0,0,0,doppler_var]}, 1,numNodes);
+           
+        elseif TYPE == "MLE"
+            % Give the dummy variable
+            % mu_r = zeros(network_topo.numNodes);
+            % mu_d = zeros(network_topo.numNodes);
+            % sigma_r = zeros(network_topo.numNodes);
+            % sigma_d = zeros(network_topo.numNodes);
+            prior_mu = repmat({[0; 0; 0; 0]}, 1,numNodes);
+            prior_sigma = repmat({zeros(4)}, 1,numNodes);
+        end
 
-        % mu_r = range_true(1,:);
-        % sigma_r   = var(range_true);
-        % mu_d = doppler_true(1,:);
-        % sigma_d = var(range_true);
     
 
         % y_0 and lower, upper bound
-        initial_guess = [1000, 1000, 10, 10];
+        initial_guess = [1000, 1000, -14, 14]';
         lb = [-inf,-inf,-inf,-inf];
         ub = [inf,inf, inf, inf];
-        % fun = @(params) ut.logLikelihood(params, range_with_error_CA, doppler_with_error_CA, network_topo.radar_pos, network_topo.numNodes, M, env.lambda, Sigma_big);
-        fun = @(params) ut.MAP(params, range_with_error_CA, doppler_with_error_CA, mu_r, mu_d, sigma_r, sigma_d, network_topo.radar_pos, network_topo.numNodes, M, env.lambda, Sigma_big);
+        if TYPE == "MLE"
+            disp("----- Optimized using MLE obj function-------")
+            fun = @(params) ut.logLikelihood(params, range_with_error_CA, doppler_with_error_CA, network_topo.radar_pos, network_topo.numNodes, M, env.lambda, Sigma_big);
+
+        elseif TYPE == "MAP"
+            disp("----- Optimized using MAP obj function-------")
+            % fun = @(params) ut.MAP(params, range_with_error_CA, doppler_with_error_CA, mu_r, mu_d, sigma_r, sigma_d, network_topo.radar_pos, network_topo.numNodes, M, env.lambda, Sigma_big);
+            fun = @(params) ut.MAP(params, range_with_error_CA, doppler_with_error_CA, prior_mu, prior_sigma, network_topo.radar_pos, network_topo.numNodes, M, env.lambda, Sigma_big);
+        end
         [estimated_params_CA, log_likelihood, exitflag, output] = fmincon(fun, initial_guess,[],[],[],[], lb, ub, [],options_CA);
         estimates_mc_CA(mc, :) = estimated_params_CA;
         
@@ -184,18 +206,29 @@ for mc = 1:num_monte_carol
         radar_positions_cell = cell(1, numNodes);
         Sigma_big_1_cell = cell(1, numNodes);
         Sigma_big_2_cell = cell(1, numNodes);
-        mu_r_cell = cell(1,network_topo.numNodes);
-        mu_d_cell = cell(1,network_topo.numNodes);
+        proir_mu_cell = cell(1,network_topo.numNodes);
+        prior_sigma_cell = cell(1,network_topo.numNodes);
         sigma_r_cell = cell(1,network_topo.numNodes);
         sigma_d_cell = cell(1,network_topo.numNodes);
         
         % Pharse_measurements
+        % [range_with_error_cell,doppler_with_error_cell,numNodes_cell,...
+        % radar_positions_cell,Sigma_big_1_cell,Sigma_big_2_cell,...
+        % mu_r_cell,mu_d_cell,sigma_r_cell,sigma_d_cell] = ut.pharse_measurements(laplacian_matrix, ...
+        % range_with_error, doppler_with_error, mu_r, mu_d, sigma_r, sigma_d,Sigma_big,...
+        % range_with_error_cell, doppler_with_error_cell, ...
+        % mu_r_cell, mu_d_cell, sigma_r_cell, sigma_d_cell, network_topo, M);
         [range_with_error_cell,doppler_with_error_cell,numNodes_cell,...
         radar_positions_cell,Sigma_big_1_cell,Sigma_big_2_cell,...
-        mu_r_cell,mu_d_cell,sigma_r_cell,sigma_d_cell] = ut.pharse_measurements(laplacian_matrix, ...
-        range_with_error, doppler_with_error, mu_r, mu_d, sigma_r, sigma_d,Sigma_big,...
+        prior_mu_cell, prior_sigma_cell] = ut.pharse_measurements(laplacian_matrix, ...
+        range_with_error, doppler_with_error,Sigma_big,...
         range_with_error_cell, doppler_with_error_cell, ...
-        mu_r_cell, mu_d_cell, sigma_r_cell, sigma_d_cell, network_topo, M);
+        prior_mu, prior_sigma, network_topo, M);
+        % [range_with_error_cell,doppler_with_error_cell,numNodes_cell,...
+        % radar_positions_cell,Sigma_big_1_cell,Sigma_big_2_cell] = ut.pharse_measurements(laplacian_matrix, ...
+        % range_with_error, doppler_with_error,Sigma_big,...
+        % range_with_error_cell, doppler_with_error_cell, ...
+        % mu_r_cell, mu_d_cell, sigma_r_cell, sigma_d_cell, network_topo, M);
 
         %% Distributed consensus algor.
         % %%TODO: Set the distributed algor. config
@@ -205,12 +238,12 @@ for mc = 1:num_monte_carol
         tolerance = 1e-4;
         % tolerance = 1e-2;
         max_iterations = 300;
-        c_penalty = [10, 10, 10, 10]; % For SNR 50dB
+        c_penalty = [100, 100, 15, 15]; % For SNR 50dB
         % c_penalty = [10^2, 10^2, 3*5, 3*5]; % For SNR 50dB
         % c_penalty = [1e3,1e3, 3e5, 3e5]; % For SNR 50dxB
         % c_penalty = [1e2,1e2,3e3,3e3];
         % initial_values = repmat([1000, 1000, 10, 10]', 1,numNodes);
-        initial_values = repmat([1000, 1000, 10, 10]', 1,numNodes);
+        initial_values = repmat([1000, 1000, 0, 0]', 1,numNodes);
         Nu = cell(1, numNodes);
         Nu_prev = cell(1, numNodes);
         update_z = cell(1, numNodes);
@@ -228,12 +261,12 @@ for mc = 1:num_monte_carol
         converg_d = false;
         % Define the parameters for adaptive penalty update
         % Define more conservative parameters for adaptive penalty update
-        % tau_incr = [2.01, 2.01, 2.1, 2.1];  % Smaller increase factor
-        % tau_decr = [2.01, 2.01, 2.1, 2.1];  % Smaller decrease factor
+        tau_incr = [2.01, 2.01, 2.1, 2.1];  % Smaller increase factor
+        tau_decr = [2.01, 2.01, 2.1, 2.1];  % Smaller decrease factor
         % tau_incr = [50, 50, 50, 50];  % Smaller increase factor
         % tau_decr = [50, 50, 50, 50];  % Smaller decrease factor
-        tau_incr = [1.1, 1.1, 1.1, 1.1];  % Smaller increase factor
-        tau_decr = [1.1, 1.1, 1.1, 1.1];  % Smaller decrease factor
+        % tau_incr = [1.1, 1.1, 1.1, 1.1];  % Smaller increase factor
+        % tau_decr = [1.1, 1.1, 1.1, 1.1];  % Smaller decrease factor
         mu = [3,3,10,10];          % Slightly smaller threshold ratio
         alpha = [0.5, 0.5, 0.5, 0.5];  % Damping factor
     
@@ -255,11 +288,19 @@ for mc = 1:num_monte_carol
                         Nu{n}(:,j) = Nu_prev{n}(:,j) + c_penalty' .* (initial_values(:,n) - update_z_prev{n}(:,j));
                 end
                 % Eq. (4.17a)
-                % fun = @(params) ut.logLikelihoodWithConsensus(params, range_with_error_cell{n}, doppler_with_error_cell{n}, radar_positions_cell{n},numNodes_cell{n}, M, env.lambda, Sigma_big_2_cell{n}, n, neighbors, Nu, initial_values, update_z_prev, c_penalty);
-                fun = @(params) ut.posteriorWithConsensus(params, range_with_error_cell{n}, doppler_with_error_cell{n}, ...
-                                                            mu_r_cell{n}, mu_d_cell{n}, sigma_r_cell{n}, sigma_d_cell{n}, radar_positions_cell{n}, ...
+                if TYPE == "MLE"
+                    fun = @(params) ut.logLikelihoodWithConsensus(params, range_with_error_cell{n}, doppler_with_error_cell{n}, radar_positions_cell{n},numNodes_cell{n}, M, env.lambda, Sigma_big_2_cell{n}, n, neighbors, Nu, initial_values, update_z_prev, c_penalty);
+                
+                elseif TYPE == "MAP"
+                    % fun = @(params) ut.posteriorWithConsensus(params, range_with_error_cell{n}, doppler_with_error_cell{n}, ...
+                    %                                         mu_r_cell{n}, mu_d_cell{n}, sigma_r_cell{n}, sigma_d_cell{n}, radar_positions_cell{n}, ...
+                    %                                         numNodes_cell{n}, M, env.lambda, Sigma_big_2_cell{n}, ...
+                    %                                         n, neighbors, Nu, initial_values, update_z_prev, c_penalty);
+                    fun = @(params) ut.posteriorWithConsensus(params, range_with_error_cell{n}, doppler_with_error_cell{n}, ...
+                                                            prior_mu_cell{n}, prior_sigma_cell{n}, radar_positions_cell{n}, ...
                                                             numNodes_cell{n}, M, env.lambda, Sigma_big_2_cell{n}, ...
                                                             n, neighbors, Nu, initial_values, update_z_prev, c_penalty);
+                end
                 %TODO: mu_r, mu_d, doppler_r and doppler_d should at here,
                 %also have to forward informantion of neighbors. 
                 estimated_params = fmincon(fun, initial_values(:,n),[],[],[],[], lb, ub, [],options_DA);
@@ -284,12 +325,12 @@ for mc = 1:num_monte_carol
             for n = 1: network_topo.numNodes
                 for j = neighbors{n}
                     % Calculate the primal residual, Eq.4.18
-                    % primal_residual = primal_residual + norm(all_estimations(:,n) - update_z{n}(:,j), 2)^2;
-                    primal_residual = primal_residual + norm(all_estimations(:,n) - update_z{n}(:,j), 2);
+                    primal_residual = primal_residual + norm(all_estimations(:,n) - update_z{n}(:,j), 2)^2;
+                    % primal_residual = primal_residual + norm(all_estimations(:,n) - update_z{n}(:,j), 2);
                     primal_residual_params = primal_residual_params + abs(all_estimations(:,n) - update_z{n}(:,j));
                     % Calculate the dual residual, Eq.4.19
-                    % dual_residual = dual_residual + norm(Nu{n}(:,j) - Nu_prev{n}(:,j))^2;
-                    dual_residual = dual_residual + norm(Nu{n}(:,j) - Nu_prev{n}(:,j));
+                    dual_residual = dual_residual + norm(Nu{n}(:,j) - Nu_prev{n}(:,j))^2;
+                    % dual_residual = dual_residual + norm(Nu{n}(:,j) - Nu_prev{n}(:,j));
                     dual_residual_params = dual_residual_params + abs(Nu{n}(:,j) - Nu_prev{n}(:,j));
                 end
                 prima_residual_by_node(:,n) = primal_residual_params;
@@ -301,16 +342,16 @@ for mc = 1:num_monte_carol
             dual_residual_by_para{iteration}   = dual_residual_by_node; 
 
             % Stop criterion, vanilia stop criterion
-            % if primal_residual < tolerance
-            %     break;
-            % end
+            if primal_residual < tolerance
+                break;
+            end
     
-            % if iteration == max_iterations
-            %     break;
-            % end
+            if iteration == max_iterations
+                break;
+            end
 
-            % % Every 30 iteration, 
-            % if mod(iteration, 30) == 0
+            % % % Every 30 iteration, 
+            % if mod(iteration, 20) == 0
             %     % Update the penalty parameter based on the residuals
             %     if primal_residual < 10* dual_residual
             %         c_penalty = tau_incr .* c_penalty;
@@ -320,11 +361,11 @@ for mc = 1:num_monte_carol
             % end
             % Every iteration, 
             % Update the penalty parameter based on the residuals
-            if primal_residual < 10* dual_residual
-                c_penalty = tau_incr .* c_penalty;
-            elseif dual_residual < 10*primal_residual
-                c_penalty = c_penalty .* ((tau_decr).^(-1));
-            end
+            % if primal_residual < 10* dual_residual
+            %     c_penalty = tau_incr .* c_penalty;
+            % elseif dual_residual < 10*primal_residual
+            %     c_penalty = c_penalty .* ((tau_decr).^(-1));
+            % end
             
             % Update the cur. term to next term (k -> k-1)
             % Replace the results
@@ -402,6 +443,17 @@ for mc = 1:num_monte_carol
 
 end
 
+%-- P1-5 In the end of the run save the experiment parameters log in json files
+experiment_params_log = struct();
+experiment_params_log.network_topo = network_topo;
+experiment_params_log.NUM_CPI_PER_MEA = M_values;
+experiment_params_log.TRACK_TIME = 1; % Since this is the localization case
+experiment_params_log.TYPE = TYPE;
+experiment_params_log.constant = env;
+
+if DEBUG==false
+    ut.write_exp_log('./data_log', 'exp_config_localization',experiment_params_log);
+end
 
 %% Figures
 % True parameters
@@ -410,26 +462,26 @@ true_params = [target.initial_position(1), target.initial_position(2), target.sp
 fig_ut = make_figs(network_topo.numNodes);
 
 %-- Plot covergence of ADMM across all nodes
-% fig_ut.plot_converge_across_node(all_estimations_every_iter,true_params,network_topo);
+fig_ut.plot_converge_across_node(all_estimations_every_iter,true_params,network_topo);
 fig_ut.plot_converge_across_node_withCentrl(all_estimations_every_iter,true_params,network_topo,estimates_mc_CA);
 % %-- Plot dual & primal residual
-% fig_ut.plot_dual_primal_residual(dual_residual_all,primal_residual_CR, all_estimations_every_iter_CR,laplacian_matrix_CR,network_topo);
+fig_ut.plot_dual_primal_residual(dual_residual_all,primal_residual_CR, all_estimations_every_iter_CR,laplacian_matrix_CR,network_topo);
 % %-- 
-% node_to_show = 3;
-% fig_ut.plot_specific_node_converg(node_to_show,com_rad_CR,laplacian_matrix_CR,all_estimations_every_iter_CR,estimated_params_CA,network_topo,true_params);
-% fig_ut.plot_sepcific_node_error_converg(all_estimations_every_iter_mc,estimates_mc_CA,direction_mc,true_params_mc);
+node_to_show = 3;
+fig_ut.plot_specific_node_converg(node_to_show,com_rad_CR,laplacian_matrix_CR,all_estimations_every_iter_CR,estimated_params_CA,network_topo,true_params);
+fig_ut.plot_sepcific_node_error_converg(all_estimations_every_iter_mc,estimates_mc_CA,direction_mc,true_params_mc);
 % 
 %-- 
-% fig_ut.plot_MSE_error(direction_mc,all_estimations_every_iter_mc,true_params_mc);
+fig_ut.plot_MSE_error(direction_mc,all_estimations_every_iter_mc,true_params_mc);
 % 
 % %-- Plot measurement errors of all neighhbors
-% fig_ut.plot_errors_all_neighbors(com_rad_CR, laplacian_matrix_CR, all_estimations_every_iter_CR, estimated_params_CA,network_topo,true_params);
+fig_ut.plot_errors_all_neighbors(com_rad_CR, laplacian_matrix_CR, all_estimations_every_iter_CR, estimated_params_CA,network_topo,true_params);
 % 
 % %-- 
-% fig_ut.plot_MSE_for_all_neightbors(com_rad_CR,laplacian_matrix_CR,estimated_params_CA,all_estimations_every_iter_CR,true_params,network_topo);
+fig_ut.plot_MSE_for_all_neightbors(com_rad_CR,laplacian_matrix_CR,estimated_params_CA,all_estimations_every_iter_CR,true_params,network_topo);
 % 
 % %--
-% fig_ut.plot_MSE_error_compare_DA_DS(direction_mc,all_estimations_every_iter_mc,estimates_mc_CA, true_params_mc);
+fig_ut.plot_MSE_error_compare_DA_DS(direction_mc,all_estimations_every_iter_mc,estimates_mc_CA, true_params_mc);
 
 % figure;
 % 

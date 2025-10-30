@@ -9,7 +9,7 @@ PRE_WHITEN = true;
 %-- P1-0: Simulation Scenarios parameters
 num_monte_carlo = 1; % Number of monte carlo runs
 NUM_CPI_PER_MEA = 64;    % Number of measurements per burst
-TRACK_TIME = 8;   % Number of burst times
+TRACK_TIME = 4;   % Number of burst times
 time_step = 1e-3;    % Time step between two measurements
 
 % [DELETE AFTER DEBUGGING]
@@ -72,7 +72,10 @@ for i = 1:10
     end
 end
 
-%-- P1-3 Algoirthm parameters and solver setup
+%-- P1-3 Algoirthm parameters and solver setup, can change 
+% Also effectiveness of the pre-whiterening. 
+% Need Solver, -> to show 
+% Go to distributed, 
 options_Dctral = optimoptions('fmincon', 'Display', 'off', ScaleProblem=true, OptimalityTolerance=1e-2, FunctionTolerance=1e-6, StepTolerance=1e-6, MaxIterations=100);
 options_Ctral =  optimoptions('fmincon', 'Display', 'off', ScaleProblem=true, OptimalityTolerance=1e-6, FunctionTolerance=1e-6, StepTolerance=1e-6, MaxIterations=100000);
 ADMM = struct();
@@ -150,63 +153,7 @@ else
 end     
 
 
-%-- EKF setup for each node
-EKF = struct();
-EKF.delta_k = env.time_step; % Time interval between two measurements? Can be only for track time.
-EKF.cv_motion_model = @(state, dt) models_ut.stateModel(state, dt);
-EKF.LocalMeasureModel = @(state, idx, network_topo, env) (models_ut.LocalMeasureModel(state, idx, network_topo, env));
-EKF.LocalMeasureModelJacobian = @(state, idx, network_topo, env) (models_ut.LocalMeasureModelJacobian(state, idx, network_topo, env));
-
-EKF.MeasureModel = @(state, idx, network_topo, env) (models_ut.MeasureModel(state, idx, network_topo, env));
-EKF.MeasureModelJacobian = @(state, idx, network_topo, env) (models_ut.MeasureModelJacobian(state, idx, network_topo, env));
-
-EKF.system_noise = 1e-2 * [ EKF.delta_k^4/4, 0, EKF.delta_k^3/2, 0; 
-                          0, EKF.delta_k^4/4, 0, EKF.delta_k^3/2; 
-                          EKF.delta_k^3/2, 0, EKF.delta_k^2, 0; 
-                          0, EKF.delta_k^3/2, 0, EKF.delta_k^2]; % System noise covariance
-
-EKF.StateCovariance = diag([env.Sigma(1,1), env.Sigma(1,1), env.Sigma(2,2), env.Sigma(2,2)]); % Initial state covariance                     
-EKF.StateCovariance = EKF.system_noise; % Initial state covariance
-% EKF.StateCovariance = diag([1e3, 1e3, 1e3, 1e3]); % Initial state covariance
-EKF.initial_tar_guess = [1000,1000,-14,14];
-
-for i = 1:network_topo.numNodes
-    initial_guess = EKF.initial_tar_guess - [network_topo.radar_pos(i,1), network_topo.radar_pos(i,2),0,0]; % Relative position to each radar node
-    % initial_guess = EKF.initial_tar_guess; % Relative position to each radar node
-    % EKF.filter{i} = trackingEKF(State = initial_guess, ...
-    %                  StateTransitionFcn = @constvel,...% Check diff between build in function and the self-defined one
-    %                  StateCovariance    = EKF.StateCovariance,...
-    %                  ProcessNoise = EKF.system_noise, ...
-    %                  MeasurementFcn = EKF.MeasureModel, ...
-    %                  MeasurementJacobianFcn = EKF.MeasureModelJacobian, ...
-    %                  MeasurementNoise = env.Sigma);
-    % EKF.filter{i} = trackingEKF(State=initial_guess, ...
-    %                  StateTransitionFcn = @constvel,...% Check diff between build in function and the self-defined one
-    %                  StateCovariance    = EKF.StateCovariance,...
-    %                  ProcessNoise = EKF.system_noise, ...
-    %                  MeasurementFcn = EKF.MeasureModel, ...
-    %                  EnableSmoothing=true,...
-    %                  MeasurementJacobianFcn = EKF.MeasureModelJacobian);
-
-    % %% Local state intialization
-    EKF.filter{i} = trackingEKF(State=initial_guess, ...
-                     StateCovariance = EKF.StateCovariance, ...
-                     StateTransitionFcn = EKF.cv_motion_model, ...% Check diff between build in function and the self-defined one
-                     ProcessNoise = EKF.system_noise, ...
-                     MeasurementFcn = EKF.LocalMeasureModel, ...
-                     MeasurementJacobianFcn = EKF.LocalMeasureModelJacobian, ...
-                     MeasurementNoise = env.Sigma_filter);
-
-    %% Global state intialization
-    % EKF.filter{i} = trackingEKF(State=EKF.initial_tar_guess, ...
-    %                  StateCovariance = EKF.StateCovariance, ...
-    %                  StateTransitionFcn = EKF.cv_motion_model, ...% Check diff between build in function and the self-defined one
-    %                  ProcessNoise = EKF.system_noise, ...
-    %                  MeasurementFcn = EKF.MeasureModel, ...
-    %                  MeasurementJacobianFcn = EKF.MeasureModelJacobian, ...
-    %                  MeasurementNoise = env.Sigma);
-    
-end %TOFIGUREOUT: the intial guess here are the relative coordination or global coord of the target?
+%-- [No need EKF here] EKF setup for each node
 
 %-- P1-5 Save the experiment parameters log in json file
 experiment_params_log = struct();
@@ -270,66 +217,36 @@ for mc = 1:num_monte_carlo
                 end
                 %-- P3-1: Local filtering (EKF), loop over time and each node 
                 if k ~= 1
-                    for i = 1: network_topo.numNodes
-                        current_range_meas = (squeeze(range_with_error_withNeighbors{tar, i}((k-1)*NUM_CPI_PER_MEA + 1 : k*NUM_CPI_PER_MEA)));
-                        current_doppler_meas = (squeeze(doppler_with_error_withNeighbors{tar, i}((k-1)*NUM_CPI_PER_MEA + 1 : k*NUM_CPI_PER_MEA)));
-                        current_measurements = [current_range_meas'; current_doppler_meas'];
-                        for instance = 1:NUM_CPI_PER_MEA
-                            % Update EKF with each measurement in the burst
-                            t = (k-1)*NUM_CPI_PER_MEA+instance;
-                            % disp("Time step: "+t+", Node: "+i);
-                            % if i == 1
-                            %     models_ut.printEkfIntermediates(EKF.filter{i},env.pre_whit_L*[current_range_meas(instance), current_doppler_meas(instance)]', EKF.delta_k, t , i, network_topo, env);
-                            % end
-                            [xpred, Ppred] = predict(EKF.filter{i}, env.time_step);
-                            % disp("Before"+ num2str(EKF.filter{i}.StateCovariance)+"\n");
-                            % disp("input Measurement: Range "+current_range_meas(instance)+", Doppler "+current_doppler_meas(instance));
-                            correct(EKF.filter{i}, env.pre_whit_L*[current_range_meas(instance), current_doppler_meas(instance)]', i ,network_topo, env);
-                            % disp("Output Measurement: Range "+mea(1)+", Doppler "+ mea(2));
-                            % disp(MeasureModelJacobian(EKF.filter{i}.state,i,network_topo, env));
-                            all_estimation_from_EKFs{(k-1)*NUM_CPI_PER_MEA+instance, i} = EKF.filter{i}.State; % TO DLELETE AFTER DEBUGGING
-                            x_pred_from_EKFs{(k-1)*NUM_CPI_PER_MEA+instance, i} = xpred; % TO DLELETE AFTER DEBUGGING
-                            P_pred_from_EKFs{(k-1)*NUM_CPI_PER_MEA+instance, i} = Ppred; % TO DLELETE AFTER DEBUGGING
+                    ADMM.initial_values = repmat(ADMM.final_tracking_estimation{tar, k-1}, 1,network_topo.numNodes); % Can initalize as local values?
+                    % ADMM.initial_values = repmat([1000,1000,20,20]', 1,network_topo.numNodes);
+                    for iter = 1: network_topo.numNodes
+                        current_neighbors = find(network_topo.laplacian_matrix(n, :) ~= 0);
+                        it = 0;
+                        r_neigbors = zeros(1, length(current_neighbors));
+                        v_neigbors = zeros(1, length(current_neighbors));
+                        sigma_r_neigbors = zeros(1, length(current_neighbors));
+                        sigma_v_neigbors = zeros(1, length(current_neighbors));
+                        for j = current_neighbors
+                            it = k+1;
+                            % r_neigbors(:,it) = norm(ADMM.initial_values(1:2, j),2);
+                            % v_neigbors(:,it) = norm(ADMM.initial_values(3:4, j),2);
+                            % sigma_r_neigbors(:,:,it) = EKF.filter{j}.StateCovariance(1:2,1:2);
+                            % sigma_v_neigbors(:,:,it) = EKF.filter{j}.StateCovariance(3:4,3:4);
+                            % r_neigbors = mean(range_with_error_cell_window{j});  % local -> global and mean 
+                            % v_neigbors = mean(doppler_with_error_cell_window{j});
+                            % r_neigbors = norm(ADMM.initial_values(1:2, j),2);
+                            % v_neigbors = norm(ADMM.initial_values(1:2, j),2);
+                            % sigma_r_neigbors = var(range_with_error_cell_window{j});
+                            % sigma_v_neigbors = var(doppler_with_error_cell_window{j});
+                            r_neigbors(:,it) = 1000;
+                            v_neigbors(:,it) = 20;
+                            sigma_r_neigbors = [1, 1, 1];
+                            sigma_v_neigbors = [1, 1, 1];
                         end
-                        % Update EKF with each measurement in one row
-                        % [xpred, Ppred] = predict(EKF.filter{i}, NUM_CPI_PER_MEA*env.time_step);
-                        % correct(EKF.filter{i}, [current_range_meas(end), current_doppler_meas(end)], i ,network_topo,env);
-                        % all_estimation_from_EKFs{k, i} = EKF.filter{i}.State; % TO DLELETE AFTER DEBUGGING
-                        % x_pred_from_EKFs{k, i} = xpred; % TO DLELETE AFTER DEBUGGING
-                        % P_pred_from_EKFs{k, i} = Ppred; % TO DLELETE AFTER DEBUGGING
-
-                        % Perform EKF prediction and update
-                        % predict(EKF.filter{i}KF,E.delta_k);
-                        % % [EKF.filter{i}.State, EKF.filter{i}.StateCovariance] = correct(EKF.filter{i}, current_measurements(:, i), i ,network_topo,env);
-                        % correct(EKF.filter{i}, current_measurements(:, i), i ,network_topo,env);
-                        % Store the EKF estimate as the initial value for ADMM
-                        %--- Handover information from EKF to ADMM
-                        if k ~=1
-                            % ADMM.initial_values(:, i) = EKF.filter{i}.State; % OR to assign the previous ADMM estimate as the new initiial value.
-                            % ADMM.initial_values(:, i) = xpred;
-                            ADMM.initial_values = repmat(ADMM.final_tracking_estimation{tar, k-1}, 1,network_topo.numNodes); 
-                        end
-
-                        for iter = 1: network_topo.numNodes
-                            current_neighbors = find(network_topo.laplacian_matrix(n, :) ~= 0);
-                            it = 0;
-                            r_neigbors = zeros(2, length(current_neighbors));
-                            v_neigbors = zeros(2, length(current_neighbors));
-                            sigma_r_neigbors = zeros(2,2, length(current_neighbors));
-                            sigma_v_neigbors = zeros(2,2, length(current_neighbors));
-                            for j = current_neighbors
-                                it = k+1;
-                                r_neigbors(:,it) = norm(ADMM.initial_values(1:2, j),2);
-                                v_neigbors(:,it) = norm(ADMM.initial_values(1:2, j),2);
-                                sigma_r_neigbors(:,:,it) = EKF.filter{j}.StateCovariance(1:2,1:2);
-                                sigma_v_neigbors(:,:,it) = EKF.filter{j}.StateCovariance(3:4,3:4);
-                            end
-                            ADMM.prev_r{iter} = r_neigbors;
-                            ADMM.prev_v{iter} = v_neigbors;
-                            ADMM.prev_sigma_r{iter} = sigma_r_neigbors;
-                            ADMM.prev_sigma_v{iter} = sigma_v_neigbors;
-                            % TO CHECK IF THIS IS CORRECT, at what timestamp? can be N*CPI-1
-                        end
+                        ADMM.prev_r{iter} = r_neigbors;
+                        ADMM.prev_v{iter} = v_neigbors;
+                        ADMM.prev_sigma_r{iter} = sigma_r_neigbors;
+                        ADMM.prev_sigma_v{iter} = sigma_v_neigbors;                    
                     end
                 end 
                 % %-- P3-2: Distributed consensus optimization (ADMM)
@@ -355,27 +272,16 @@ for mc = 1:num_monte_carlo
                                                               ADMM.update_z_prev, ADMM.c_penalty);
                         else
                             fun = @(params) ut.posteriorWithConsensus(params, range_with_error_cell_window{n},doppler_with_error_cell_window{n},...
-                                                                ADMM.prev_r{n}, ADMM.prev_v{n}, ADMM.prev_sigma_r{n}, ADMM.prev_sigma_v{n},...
+                                                             ADMM.prev_r{n}, ADMM.prev_v{n}, ADMM.prev_sigma_r{n}, ADMM.prev_sigma_v{n},...
                                                              radar_positions_withNeighbors{n},numNodes_withNeighbors{n}, NUM_CPI_PER_MEA, env.lambda,...
                                                              env.Sigma, n, neighbors, ADMM.Nu, ADMM.initial_values,...
-                                                              ADMM.update_z_prev, ADMM.c_penalty);
+                                                             ADMM.update_z_prev, ADMM.c_penalty);
                         end
 
                         % save("variable.mat","range_with_error_cell_window","doppler_with_error_cell_window",...
                         %                                      "radar_positions_withNeighbors","numNodes_withNeighbors", "NUM_CPI_PER_MEA", "env",...
                         %                                       "n", "neighbors", "ADMM");
                         estimated_params = fmincon(fun, ADMM.initial_values(:,n),[],[],[],[], ADMM.lb, ADMM.ub, [], ADMM.solver);
-                        
-                        % try
-                        %     estimated_params = fmincon(fun, ADMM.initial_values(:,n),[],[],[],[], ADMM.lb, ADMM.ub, [], ADMM.solver);
-                        % catch
-                        %     fprintf('Warning: Optimization failed at node %d, iteration %d. Using previous estimates:\n %d \n', n, iteration, ADMM.initial_values(:,n));
-                        % end
-                        % [DEBUG]
-                        % ut.logLikelihoodWithConsensus([0,0,0,0], range_with_error_cell_window{n},doppler_with_error_cell_window{n},...
-                        %                                      radar_positions_withNeighbors{n},numNodes_withNeighbors{n}, NUM_CPI_PER_MEA, env.lambda,...
-                        %                                      env.Sigma, n, neighbors, ADMM.Nu, ADMM.initial_values,...
-                        %                                       ADMM.update_z_prev, ADMM.c_penalty)
                         all_estimations(:,n) = estimated_params;
                     end
                     ADMM.all_estimations_every_iter(:,:,iteration) = all_estimations;
@@ -488,65 +394,7 @@ for mc = 1:num_monte_carlo
         end
         %%
         % P4: Performance evaluation & Plotting 
-        if DEBUG
-            start = 65;
-            figure;
-            subplot(2,2,1);
-            hold on;
-            for i = 1:network_topo.numNodes
-                plot([start:1:t], cellfun(@(x) x(1), all_estimation_from_EKFs(start:t, i)),'DisplayName', "Corr."+network_topo.labels{i});
-                % plot([1:1:t], cellfun(@(x) x(1), x_pred_from_EKFs(1:t,i)), '--','DisplayName', "Pred."+network_topo.labels{i});
-                %plot GT
-                % plot([start:1:t],  cellfun(@(x) x(1), target.target_state_wrt_node(start:t, i)),'--', 'linewidth', 1.5 ,'DisplayName', "GT_"+network_topo.labels{i});
-                plot([start:1:t], cellfun(@(x) x(1), x_pred_from_EKFs(start:t,i)), 'o','DisplayName', "Pred."+network_topo.labels{i});
-            end
-            % plot([1:1:t], squeeze(target.target_position(tar, 1:t, 1)), 'k--', 'DisplayName', 'True');
-            title('EKF Estimation of X position');
-            xlabel('Time step');
-            ylabel('X position (m)');
-            legend('show');
-            % ylim([1, 5e3]);
-            subplot(2,2,2);
-            hold on;        
-            for i = 1:network_topo.numNodes
-                plot([start:1:t], cellfun(@(x) x(2), all_estimation_from_EKFs(start:t, i)), 'DisplayName', "Corr."+network_topo.labels{i});
-                % plot([start:1:t],  cellfun(@(x) x(2), target.target_state_wrt_node(start:t, i)),'--', 'linewidth', 1.5 ,'DisplayName', "GT_"+network_topo.labels{i});
-                plot([start:1:t], cellfun(@(x) x(2), x_pred_from_EKFs(start:t,i)), 'o','DisplayName', "Pred. d"+network_topo.labels{i});
-            end
-            % plot([1:1:t], squeeze(target.target_position(tar, 1:t, 2)), 'k--', 'DisplayName', 'True');
-            title('EKF Estimation of Y position');
-            xlabel('Time step');
-            ylabel('Y position (m)');
-            legend('show');
-            subplot(2,2,3);
-            % ylim([1, 5e3]);
-            hold on;        
-            for i = 1:network_topo.numNodes
-                plot([start:1:t], cellfun(@(x) x(3), all_estimation_from_EKFs(start:t, i)), 'DisplayName', "Corr."+network_topo.labels{i});
-                % plot([start:1:t],  cellfun(@(x) x(3), target.target_state_wrt_node(start:t, i)),'--', 'linewidth', 1.5 ,'DisplayName', "GT_"+network_topo.labels{i});
-                plot([start:1:t], cellfun(@(x) x(3), x_pred_from_EKFs(start:t,i)), 'o','DisplayName', "Pred"+network_topo.labels{i});
-            end         
-            % plot([1:1:t], repmat(target.true_params(3), 1, t), 'k--', 'DisplayName', 'True');
-            title('EKF Estimation of X velocity');
-            xlabel('Time step');
-            ylabel('X velocity (m/s)');
-            % ylim([-20, 0]);
-            legend('show');
-            subplot(2,2,4);
-            hold on;        
-            for i = 1:network_topo.numNodes
-                plot([start:1:t], cellfun(@(x) x(4), all_estimation_from_EKFs(start:t, i)), 'DisplayName', "Corr"+network_topo.labels{i});
-                % plot([start:1:t],  cellfun(@(x) x(4), target.target_state_wrt_node(start:t, i)),'--', 'linewidth', 1.5 ,'DisplayName', "GT_"+network_topo.labels{i});
-                plot([start:1:t], cellfun(@(x) x(4), x_pred_from_EKFs(start:t,i)),'o', 'DisplayName', "Pred"+network_topo.labels{i});
-            end         
-            % plot([1:1:t], repmat(target.true_params(4), 1, t), 'k--', 'DisplayName', 'True');
-            title('EKF Estimation   of Y velocity');
-            xlabel('Time step');
-            ylabel('Y velocity (m/s)');
-            % ylim([0, 20]);
-            legend('show');
-            %%
-        end
+        fig_ut.plot_trajectory(target.target_position,ADMM.final_tracking_estimation);
     end
     % Save the resulted estimation log in json file each monte carlo run
 end

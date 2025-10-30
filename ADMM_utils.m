@@ -52,13 +52,14 @@ classdef ADMM_utils
         end
 
         %% Log Likelihood Function for MAP
-        function posterior = MAP(params, range_with_error, doppler_with_error, mu_r, mu_d, sigma_r, sigma_d,radar_positions, numNodes, M, lambda, Sigma_big)
-        %%% The MAP, prior, ll should write in a loop that based on how
-        %%% many noded you input, then calculate to give flexibility. 
-
+        % function posterior = MAP(params, range_with_error, doppler_with_error, mu_r, mu_d, sigma_r, sigma_d,radar_positions, numNodes, M, lambda, Sigma_big)
+        function posterior = MAP(params, range_with_error, doppler_with_error, mu_state, sigma_state,radar_positions, numNodes, M, lambda, Sigma_big)
+            %%% The MAP, prior, ll should write in a loop that based on how
+            %%% many noded you input, then calculate to give flexibility. 
             % Calculate prior
             ut = ADMM_utils;
-            prior = ut.prior_distribution(params, mu_r, mu_d, sigma_r, sigma_d, radar_positions, numNodes, M, lambda);
+            % prior = ut.prior_distribution(params, mu_r, mu_d, sigma_r, sigma_d, radar_positions, numNodes, M, lambda);
+            prior = ut.state_prior_distribution(params, mu_state, sigma_state,numNodes);
             % prior = ut.prior_distribution_initial_guess(params, mu_r, mu_d, sigma_r, sigma_d, radar_positions, numNodes, M, lambda);
             % prior = ut.prior_distribution_initial_values(params, mu_r, mu_d, sigma_r, sigma_d, radar_positions, numNodes, M, lambda);
 
@@ -107,7 +108,8 @@ classdef ADMM_utils
             end 
             posterior = log_likelihood + prior + ((1/2)*log(2*pi));% What about 1/2 ln{sigma)
         end
-        function prior = prior_distribution(params, mu_r, mu_d,sigma_r,sigma_d, radar_positions, numNodes, M, lambda)
+        function prior = prior_distribution(params, mu_r, mu_d,sigma_r,sigma_fd, radar_positions, numNodes, M, lambda)
+            % Shape of mu_r, mu_d, sigma_r, sigma_d should be [numNodes x 1]
             x_tar = params(1);
             y_tar = params(2);
             v_x = params(3);
@@ -120,8 +122,8 @@ classdef ADMM_utils
                 % Theis should be chnage 
                 mu_rj      =  mu_r(j);
                 mu_fdj     =  mu_d(j);
-                sigma_fd2 = sigma_r(j);
-                sigma_r2  = sigma_d(j);
+                sigma_fd2 = sigma_fd(j);
+                sigma_r2  = sigma_r(j);
                 %%%%%%%%%%%%%%%%%%%%%%
                 for i = 1:M
                     % Range model
@@ -139,6 +141,14 @@ classdef ADMM_utils
                     % prior = prior +  (1/2*(sigma_fd2*sigma_r2)) * (( mu_fdj).^2 * (sigma_r2) + (mu_rj).^2 * (sigma_fd2));
                     
                 end
+            end 
+        end
+        function prior = state_prior_distribution(params, mu,sigma, numNodes)
+            % Shape of mu_r, mu_d, sigma_r, sigma_d should be [numNodes x 1]
+            prior = 0;
+            dim = length(params);
+            for j = 1:numNodes
+                    prior= prior + (1/sqrt((2*pi)^dim*det((sigma{j}))))* ((params - mu{j})' * inv((sigma{j})) * (params - mu{j}));
             end 
         end
         
@@ -234,11 +244,15 @@ classdef ADMM_utils
         end
 
         %% LogLikelihood with Consensus
-        function map_with_consensus = posteriorWithConsensus(params, range_measurements, doppler_measurements, prev_r, ...
-                                                            prev_v, sigma_r, sigma_v, radar_positions, numNodes, ...
+        % function map_with_consensus = posteriorWithConsensus(params, range_measurements, doppler_measurements, prev_r, ...
+        %                                                     prev_v, sigma_r, sigma_v, radar_positions, numNodes, ...
+        %                                                      M, lambda, Sigma_big, n, neighbors, Nu, initial_values, update_z, c_penalty)
+        function map_with_consensus = posteriorWithConsensus(params, range_measurements, doppler_measurements, ...
+                                                            prior_mean, prior_sigma, radar_positions, numNodes, ...
                                                              M, lambda, Sigma_big, n, neighbors, Nu, initial_values, update_z, c_penalty)
             ut = ADMM_utils;
-            posterior = ut.MAP(params, range_measurements, doppler_measurements, prev_r, prev_v, sigma_r, sigma_v,radar_positions, numNodes, M, lambda, Sigma_big);
+            % posterior = ut.MAP(params, range_measurements, doppler_measurements, prev_r, prev_v, sigma_r, sigma_v,radar_positions, numNodes, M, lambda, Sigma_big);
+            posterior = ut.MAP(params, range_measurements, doppler_measurements, prior_mean, prior_sigma, radar_positions, numNodes, M, lambda, Sigma_big);
             sum_L1 = 0;
             sum_L2 = 0;
             for j = neighbors{n}
@@ -447,12 +461,18 @@ classdef ADMM_utils
             end
         end
 
+        % function [range_with_error_cell,doppler_with_error_cell,numNodes_cell,...
+        %           radar_positions_cell,Sigma_big_1_cell,Sigma_big_2_cell,...
+        %           mu_r_cell,mu_d_cell,sigma_r_cell,sigma_d_cell] = pharse_measurements(laplacian_matrix, ...
+        % range_with_error, doppler_with_error, mu_r, mu_d, sigma_r, sigma_d,Sigma_big,...
+        % range_with_error_cell, doppler_with_error_cell, ...
+        % mu_r_cell, mu_d_cell, sigma_r_cell, sigma_d_cell, network_topo, M)
         function [range_with_error_cell,doppler_with_error_cell,numNodes_cell,...
-                  radar_positions_cell,Sigma_big_1_cell,Sigma_big_2_cell,...
-                  mu_r_cell,mu_d_cell,sigma_r_cell,sigma_d_cell] = pharse_measurements(laplacian_matrix, ...
-        range_with_error, doppler_with_error, mu_r, mu_d, sigma_r, sigma_d,Sigma_big,...
-        range_with_error_cell, doppler_with_error_cell, ...
-        mu_r_cell, mu_d_cell, sigma_r_cell, sigma_d_cell, network_topo, M)
+                  radar_positions_cell,Sigma_big_1_cell,Sigma_big_2_cell, ...
+                  state_mu_cell, state_cov_cell] = pharse_measurements(laplacian_matrix, ...
+                  range_with_error, doppler_with_error,Sigma_big, ...
+                  range_with_error_cell, doppler_with_error_cell, ...
+                  state_mu, state_cov, network_topo, M)
             for n = 1: network_topo.numNodes
                 current_neighbors = find(laplacian_matrix(n, :) ~= 0);
                 k = 0;
@@ -461,6 +481,8 @@ classdef ADMM_utils
                 range_with_error_1 =[];
                 doppler_with_error_1 = [];
                 radar_positions_1 = [];
+                mu_state_neighbor = {};
+                sigma_state_neighbor = {};
                 for j = current_neighbors
                     k = k+1;
                     % 
@@ -468,10 +490,13 @@ classdef ADMM_utils
                     doppler_with_error_1(:,k) = doppler_with_error(:,j);
                     radar_positions_1(k,:) = network_topo.radar_pos(j,:);
                     numNodes_1 = length(current_neighbors);
-                    mu_r_neighbor(:,k) = mu_r(k);
-                    mu_d_neighbor(:,k) = mu_d(k);
-                    sigma_r_neighbor(:,k) = sigma_r(k);
-                    sigma_d_neighbor(:,k) = sigma_d(k);
+                    % Get prior parameters from neighbors
+                    mu_state_neighbor{k} = state_mu{j};
+                    sigma_state_neighbor{k} = state_cov{j};
+                    % mu_r_neighbor(:,k) = mu_r(k);
+                    % mu_d_neighbor(:,k) = mu_d(k);
+                    % sigma_r_neighbor(:,k) = sigma_r(k);
+                    % sigma_d_neighbor(:,k) = sigma_d(k);
                     for i =1:M
                         base_idx = 2 * (M * (j - 1) + (i - 1)) + 1;
                         sigma_r2 = Sigma_big(base_idx, base_idx);
@@ -487,15 +512,17 @@ classdef ADMM_utils
                     radar_positions_cell{n} = radar_positions_1;
                     Sigma_big_1_cell{n} = Sigma_big_1;
                     Sigma_big_2_cell{n} = Sigma_big_2;
+                    state_mu_cell{n} = mu_state_neighbor;
+                    state_cov_cell{n} = sigma_state_neighbor;
                     % mu_r_cell{n}        = mu_r(j);
                     % mu_d_cell{n}        = mu_d(j);
                     % sigma_r_cell{n}     = sigma_r(j);
                     % sigma_d_cell{n}     = sigma_d(j);
                     % Prior
-                    mu_d_cell{n} = mu_r_neighbor;
-                    mu_r_cell{n} = mu_d_neighbor;
-                    sigma_r_cell{n} = sigma_r_neighbor;
-                    sigma_d_cell{n} = sigma_d_neighbor; 
+                    % mu_d_cell{n} = mu_r_neighbor;
+                    % mu_r_cell{n} = mu_d_neighbor;
+                    % sigma_r_cell{n} = sigma_r_neighbor;
+                    % sigma_d_cell{n} = sigma_d_neighbor; 
                 end
             end
         end 

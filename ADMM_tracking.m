@@ -8,7 +8,7 @@ DEBUG = true;
 %-- P1-0: Simulation Scenarios parameters
 num_monte_carlo = 1; % Number of monte carlo runs
 NUM_CPI_PER_MEA = 64;    % Number of measurements per burst
-TRACK_TIME = 8;   % Number of burst times
+TRACK_TIME = 1;   % Number of burst times
 time_step = 1e-4;    % Time step between two measurements
 % [DELETE AFTER DEBUGGING]
 all_estimation_from_EKFs = cell(TRACK_TIME*NUM_CPI_PER_MEA,10);
@@ -68,6 +68,7 @@ ADMM.initial_values = repmat([1000, 1000, 10, 10]', 1,network_topo.numNodes);
 ADMM.Nu = cell(NUM_TAR, network_topo.numNodes);
 ADMM.Nu_prev = cell(NUM_TAR, network_topo.numNodes);
 ADMM.update_z = cell(NUM_TAR, network_topo.numNodes);
+ADMM.final_tracking_estimation = cell(NUM_TAR, TRACK_TIME);
 ADMM.update_z_prev = cell(NUM_TAR, network_topo.numNodes);
 ADMM.primal_residual_all =[];
 ADMM.primal_residual_by_para = cell(NUM_TAR,network_topo.numNodes);
@@ -80,7 +81,7 @@ ADMM.DOPPLER_Xs = [];
 ADMM.DOPPLER_Ys = [];
 ADMM.converg_r = false;
 ADMM.converg_d = false;
-ADMM.tolerance = 1e-2; % Convergence tolerance for primal residual
+ADMM.tolerance = 1e-4; % Convergence tolerance for primal residual
 % Define the parameters for adaptive penalty update
 % Define more conservative parameters for adaptive penalty update
 ADMM.tau_incr = [2.01, 2.01, 2.1, 2.1];  % Smaller increase factor
@@ -226,7 +227,7 @@ for mc = 1:num_monte_carlo
                 doppler_with_error_cell_window{i}  = doppler_with_error_withNeighbors{tar,i}((k-1)*NUM_CPI_PER_MEA + 1 : k*NUM_CPI_PER_MEA,:);
                 end
                 %-- P3-1: Local filtering (EKF), loop over time and each node 
-                %  if k ~= 1
+                 if k ~= 1
                     for i = 1: network_topo.numNodes
                         current_range_meas = squeeze(range_with_error_withNeighbors{tar, i}((k-1)*NUM_CPI_PER_MEA + 1 : k*NUM_CPI_PER_MEA));
                         current_doppler_meas = squeeze(doppler_with_error_withNeighbors{tar, i}((k-1)*NUM_CPI_PER_MEA + 1 : k*NUM_CPI_PER_MEA));
@@ -246,7 +247,7 @@ for mc = 1:num_monte_carlo
                         ADMM.initial_values(:, i) = EKF.filter{i}.State;
                         
                     end
-                % end
+                end
                 %-- P3-2: Distributed consensus optimization (ADMM)
                 iteration = 0;
                 all_estimations = zeros(4, network_topo.numNodes);
@@ -379,6 +380,7 @@ for mc = 1:num_monte_carlo
                     end        
 
                 end %TODO: Remenber to reset ADMM.iteration = 0; ADMM.converged = false ; after each time step, can write a re-set function in trackingEKF class
+                ADMM.final_tracking_estimation{tar, k} = estimated_params;% Also de-whiten
                 ADMM = ut.ADMM_reset(ADMM,NUM_TAR,network_topo);
                 clear all_estimations;
                 fprintf('Time step %d completed.\n', k);

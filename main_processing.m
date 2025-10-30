@@ -85,7 +85,6 @@ for mc = 1:num_monte_carol
     disp(M_values);
 
     % 
-    
     global estimated_para_values;
     global log_likelihood_values;
     log_likelihood_values = [];
@@ -302,7 +301,6 @@ for mc = 1:num_monte_carol
                     end
                 end
             end
-            % For n != 1 iteration
             for n = 1: network_topo.numNodes
                 for j = neighbors{n}
                     % Eq. (4.17c)
@@ -383,9 +381,9 @@ set(gcf,'Color','white');
 true_params = [target.initial_position(1), target.initial_position(2), target.speed * target.direction(1), target.speed * target.direction(2)];
 fig_ut = make_figs(network_topo.numNodes);
 % 
-% %-- Plot covergence of ADMM across all nodes
-% fig_ut.plot_converge_across_node(all_estimations_every_iter,true_params,network_topo);
-% 
+%-- Plot covergence of ADMM across all nodes
+fig_ut.plot_converge_across_node(all_estimations_every_iter,true_params,network_topo);
+
 % %-- Plot dual & primal residual
 % fig_ut.plot_dual_primal_residual(dual_residual_all,primal_residual_CR, all_estimations_every_iter_CR,laplacian_matrix_CR,network_topo);
 % 
@@ -404,4 +402,4 @@ fig_ut = make_figs(network_topo.numNodes);
 % fig_ut.plot_MSE_for_all_neightbors(com_rad_CR,laplacian_matrix_CR,estimated_params_CA,all_estimations_every_iter_CR,true_params,network_topo);
 
 %--
-fig_ut.plot_MSE_error_compare_DA_DS(direction_mc,all_estimations_every_iter_mc,estimates_mc_CA, true_params_mc);
+% fig_ut.plot_MSE_error_compare_DA_DS(direction_mc,all_estimations_every_iter_mc,estimates_mc_CA, true_params_mc);
