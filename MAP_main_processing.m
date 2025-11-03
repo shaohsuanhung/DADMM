@@ -1,7 +1,7 @@
 clc; close all; clear;
 ut = ADMM_utils;
-DEBUG=true; % To see verbose
-TYPE="MLE";
+DEBUG=false; % To see verbose
+TYPE="MAP";
 %TODO: 
 % 1. Write a text file to export config. / parameters setup of the run
 % 2. Make the algorithm to be parallel computing?
@@ -94,7 +94,12 @@ for mc = 1:num_monte_carol
         communication_radius = com_rad_CR(com_rad);
         % Calculate all matrixs in one function
         [adj_matrix,degree_matrix, laplacian_matrix, inc_matrix, weights_matrix] = ut.calculate_all_graph_matrix(network_topo.radar_pos, communication_radius, network_topo.numNodes);
-
+        network_topo.adj_matrix = adj_matrix;
+        network_topo.degree_matrix = degree_matrix;
+        network_topo.laplacian_matrix = laplacian_matrix;
+        network_topo.inc_matrix = inc_matrix;
+        network_topo.weights_matrix = weights_matrix;
+        
         % Create a cell array to hold the neighbors of each node
         neighbors = ut.get_neighbors(adj_matrix, network_topo.numNodes);
        
@@ -157,11 +162,7 @@ for mc = 1:num_monte_carol
         prior_mu = cell(1, numNodes);
         prior_sigma = cell(1, numNodes);
         if TYPE == "MAP"
-            % mu_r = mean(range_with_error);
-            % sigma_r   = var(range_with_error);
-            % mu_d = mean(doppler_with_error);
-            % sigma_d = var(doppler_with_error);
-            prior_mu = repmat({[1000; 1000; 0; 0]}, 1,numNodes);
+            prior_mu = repmat({[1000; 1000; -14; 14]}, 1,numNodes);
             prior_sigma = repmat({eye(4)}, 1,numNodes);
             prior_sigma = repmat({[range_var,0,0,0; ...
                                     0,range_var,0,0;...
@@ -170,10 +171,6 @@ for mc = 1:num_monte_carol
            
         elseif TYPE == "MLE"
             % Give the dummy variable
-            % mu_r = zeros(network_topo.numNodes);
-            % mu_d = zeros(network_topo.numNodes);
-            % sigma_r = zeros(network_topo.numNodes);
-            % sigma_d = zeros(network_topo.numNodes);
             prior_mu = repmat({[0; 0; 0; 0]}, 1,numNodes);
             prior_sigma = repmat({zeros(4)}, 1,numNodes);
         end
@@ -233,7 +230,7 @@ for mc = 1:num_monte_carol
         %% Distributed consensus algor.
         % %%TODO: Set the distributed algor. config
         % Init.
-        converged = false;
+        
         iteration = 0;
         tolerance = 1e-4;
         % tolerance = 1e-2;
@@ -253,10 +250,12 @@ for mc = 1:num_monte_carol
         dual_residual_all = [];
         dual_residual_by_para = cell(1,numNodes);
         all_estimations_every_iter = [];
+        global RANGE_Xs RANGE_Ys DOPPLER_Xs DOPPLER_Ys converg_r converg_d converged;
         RANGE_Xs = [];
         RANGE_Ys = [];
         DOPPLER_Xs = [];
         DOPPLER_Ys = [];
+        converged = false;
         converg_r = false;
         converg_d = false;
         % Define the parameters for adaptive penalty update
@@ -292,17 +291,11 @@ for mc = 1:num_monte_carol
                     fun = @(params) ut.logLikelihoodWithConsensus(params, range_with_error_cell{n}, doppler_with_error_cell{n}, radar_positions_cell{n},numNodes_cell{n}, M, env.lambda, Sigma_big_2_cell{n}, n, neighbors, Nu, initial_values, update_z_prev, c_penalty);
                 
                 elseif TYPE == "MAP"
-                    % fun = @(params) ut.posteriorWithConsensus(params, range_with_error_cell{n}, doppler_with_error_cell{n}, ...
-                    %                                         mu_r_cell{n}, mu_d_cell{n}, sigma_r_cell{n}, sigma_d_cell{n}, radar_positions_cell{n}, ...
-                    %                                         numNodes_cell{n}, M, env.lambda, Sigma_big_2_cell{n}, ...
-                    %                                         n, neighbors, Nu, initial_values, update_z_prev, c_penalty);
                     fun = @(params) ut.posteriorWithConsensus(params, range_with_error_cell{n}, doppler_with_error_cell{n}, ...
                                                             prior_mu_cell{n}, prior_sigma_cell{n}, radar_positions_cell{n}, ...
                                                             numNodes_cell{n}, M, env.lambda, Sigma_big_2_cell{n}, ...
                                                             n, neighbors, Nu, initial_values, update_z_prev, c_penalty);
                 end
-                %TODO: mu_r, mu_d, doppler_r and doppler_d should at here,
-                %also have to forward informantion of neighbors. 
                 estimated_params = fmincon(fun, initial_values(:,n),[],[],[],[], lb, ub, [],options_DA);
                 all_estimations(:,n) = estimated_params;
             end
@@ -351,14 +344,14 @@ for mc = 1:num_monte_carol
             end
 
             % % % Every 30 iteration, 
-            % if mod(iteration, 20) == 0
-            %     % Update the penalty parameter based on the residuals
-            %     if primal_residual < 10* dual_residual
-            %         c_penalty = tau_incr .* c_penalty;
-            %     elseif dual_residual < 10*primal_residual
-            %         c_penalty = c_penalty .* ((tau_decr).^(-1));
-            %     end
-            % end
+            if mod(iteration, 30) == 0
+                % Update the penalty parameter based on the residuals
+                if primal_residual < 10* dual_residual
+                    c_penalty = tau_incr .* c_penalty;
+                elseif dual_residual < 10*primal_residual
+                    c_penalty = c_penalty .* ((tau_decr).^(-1));
+                end
+            end
             % Every iteration, 
             % Update the penalty parameter based on the residuals
             % if primal_residual < 10* dual_residual
@@ -374,59 +367,9 @@ for mc = 1:num_monte_carol
             Nu_prev = Nu;
 
             % algor. 2, by checking the primal residual of range and primal residual of doppler
-            % if primal_residual < tolerance && dual_residual < tolerance
-            if norm(primal_residual_by_para{iteration}(1:2)) < tolerance
-                converg_r = true;
-                % Set the store range value of primal residual
-                if isempty(RANGE_Xs)
-                    if DEBUG
-                        disp("[Debug] Range X params converge"+norm(primal_residual_by_para{iteration}(1:2))+"<"+tolerance);
-                    end
-                    RANGE_Xs = all_estimations(1,:);
-                end
-                if isempty(RANGE_Ys)
-                    if DEBUG
-                        disp("[Debug] Range Y params converge"+norm(primal_residual_by_para{iteration}(1:2))+"<"+tolerance);
-                    end
-                    RANGE_Ys = all_estimations(2,:);
-                end
-                if not(isempty(RANGE_Xs)) && not(isempty(RANGE_Ys))
-                    % Replace 
-                    if DEBUG
-                        disp("[Debug] Replace Range estimations "+mean(all_estimations(1,:))+","+mean(all_estimations(2,:))+" with "+mean(RANGE_Xs)+","+mean(RANGE_Ys)+")");
-                    end
-                    all_estimations(1,:) = RANGE_Xs;
-                    all_estimations(2,:) = RANGE_Ys;
-                end
-            end
-            if norm(primal_residual_by_para{iteration}(3:4)) < tolerance
-                converg_d = true;
-                % Set the store doppler value of primal residual
-                if isempty(DOPPLER_Xs)
-                    if DEBUG
-                        disp("[Debug] Doppler X params converge"+norm(primal_residual_by_para{iteration}(3:4))+"<"+tolerance);
-                    end
-                    DOPPLER_Xs = all_estimations(3,:);
-                end
-                if isempty(DOPPLER_Ys)
-                    DOPPLER_Ys = all_estimations(4,:);
-                    if DEBUG
-                        disp("[Debug] Doppler Y params converge"+norm(primal_residual_by_para{iteration}(3:4))+"<"+tolerance);
-                    end
-                end
-                if not(isempty(DOPPLER_Ys)) && not(isempty(DOPPLER_Xs))
-                    % Replace 
-                    if DEBUG
-                        disp("[Debug] Replace Doppler estimations "+mean(all_estimations(3,:))+","+mean(all_estimations(4,:))+" with "+mean(DOPPLER_Xs)+","+mean(DOPPLER_Ys)+")");
-                    end
-                    all_estimations(3,:) = DOPPLER_Xs;
-                    all_estimations(4,:) = DOPPLER_Ys;
-                end
-            end
-            if (converg_r && converg_d) || (iteration == max_iterations)
-                converged = true;
-            end        
-        
+            [all_estimations]= ut.ADMM_stop_criterion(primal_residual_by_para{iteration}, tolerance,...
+                                        all_estimations, RANGE_Xs, RANGE_Ys, DOPPLER_Xs, DOPPLER_Ys, converg_r, converg_d,converged,...
+                                        DEBUG, iteration, max_iterations);
         end
         
         iteration_CR(com_rad) = iteration;
@@ -450,6 +393,12 @@ experiment_params_log.NUM_CPI_PER_MEA = M_values;
 experiment_params_log.TRACK_TIME = 1; % Since this is the localization case
 experiment_params_log.TYPE = TYPE;
 experiment_params_log.constant = env;
+experiment_params_log.primal_residual_mc = primal_residual_CR;
+experiment_params_log.dual_residual_mc  = dual_residual_CR;
+experiment_params_log.all_estimations_every_iter_mc = all_estimations_every_iter_CR;
+experiment_params_log.true_params_mc = true_params_mc;
+experiment_params_log.estimates_mc_CA = estimates_mc_CA;
+
 
 if DEBUG==false
     ut.write_exp_log('./data_log', 'exp_config_localization',experiment_params_log);
@@ -462,7 +411,7 @@ true_params = [target.initial_position(1), target.initial_position(2), target.sp
 fig_ut = make_figs(network_topo.numNodes);
 
 %-- Plot covergence of ADMM across all nodes
-fig_ut.plot_converge_across_node(all_estimations_every_iter,true_params,network_topo);
+% fig_ut.plot_converge_across_node(all_estimations_every_iter,true_params,network_topo);
 fig_ut.plot_converge_across_node_withCentrl(all_estimations_every_iter,true_params,network_topo,estimates_mc_CA);
 % %-- Plot dual & primal residual
 fig_ut.plot_dual_primal_residual(dual_residual_all,primal_residual_CR, all_estimations_every_iter_CR,laplacian_matrix_CR,network_topo);

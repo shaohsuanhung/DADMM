@@ -631,5 +631,63 @@ classdef ADMM_utils
             end
 
         end
+
+        function [all_estimations]= ADMM_stop_criterion(primal_residual_by_para, tolerance,...
+                                        all_estimations, RANGE_Xs, RANGE_Ys, DOPPLER_Xs, DOPPLER_Ys, converg_r, converg_d,converged,...
+                                        DEBUG, iteration, max_iterations)
+            % global RANGE_Xs RANGE_Ys DOPPLER_Xs DOPPLER_Ys converg_r converg_d converged;
+            % if primal_residual < tolerance && dual_residual < tolerance
+            if norm(primal_residual_by_para(1:2)) < tolerance
+                converg_r = true;
+                % Set the store range value of primal residual
+                if isempty(RANGE_Xs)
+                    if DEBUG
+                        disp("[Debug] Range X params converge"+norm(primal_residual_by_para(1:2))+"<"+tolerance);
+                    end
+                    RANGE_Xs = all_estimations(1,:);
+                end
+                if isempty(RANGE_Ys)
+                    if DEBUG
+                        disp("[Debug] Range Y params converge"+norm(primal_residual_by_para(1:2))+"<"+tolerance);
+                    end
+                    RANGE_Ys = all_estimations(2,:);
+                end
+                if not(isempty(RANGE_Xs)) && not(isempty(RANGE_Ys))
+                    % Replace 
+                    if DEBUG
+                        disp("[Debug] Replace Range estimations "+mean(all_estimations(1,:))+","+mean(all_estimations(2,:))+" with "+mean(RANGE_Xs)+","+mean(RANGE_Ys)+")");
+                    end
+                    all_estimations(1,:) = RANGE_Xs;
+                    all_estimations(2,:) = RANGE_Ys;
+                end
+            end
+            if norm(primal_residual_by_para(3:4)) < tolerance
+                converg_d = true;
+                % Set the store doppler value of primal residual
+                if isempty(DOPPLER_Xs)
+                    if DEBUG
+                        disp("[Debug] Doppler X params converge"+norm(primal_residual_by_para(3:4))+"<"+tolerance);
+                    end
+                    DOPPLER_Xs = all_estimations(3,:);
+                end
+                if isempty(DOPPLER_Ys)
+                    DOPPLER_Ys = all_estimations(4,:);
+                    if DEBUG
+                        disp("[Debug] Doppler Y params converge"+norm(primal_residual_by_para(3:4))+"<"+tolerance);
+                    end
+                end
+                if not(isempty(DOPPLER_Ys)) && not(isempty(DOPPLER_Xs))
+                    % Replace 
+                    if DEBUG
+                        disp("[Debug] Replace Doppler estimations "+mean(all_estimations(3,:))+","+mean(all_estimations(4,:))+" with "+mean(DOPPLER_Xs)+","+mean(DOPPLER_Ys)+")");
+                    end
+                    all_estimations(3,:) = DOPPLER_Xs;
+                    all_estimations(4,:) = DOPPLER_Ys;
+                end
+            end
+            if (converg_r && converg_d) || (iteration == max_iterations)
+                converged = true;
+            end
+        end        
     end
 end
