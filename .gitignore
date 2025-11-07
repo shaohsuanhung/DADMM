@@ -213,4 +213,4 @@ __marimo__/
 .DS_Store
 
 *.json
-./data_logs/
+data_log/

@@ -1,8 +1,9 @@
 classdef ADMM_utils
     methods (Static)
         %% Log Likelihood Function for MLE
-        function log_likelihood = logLikelihood(params, range_with_error, doppler_with_error, radar_positions, numNodes, M, lambda, Sigma_big)
-            
+        function log_likelihood = logLikelihood(params, range_with_error, doppler_with_error, radar_positions, numNodes, M, lambda, Sigma_big, varargin)
+            % Optional arguments can be added later if needed
+            % L : Whitening transformation
             x_tar = params(1);
             y_tar = params(2);
             v_x = params(3);
@@ -24,7 +25,13 @@ classdef ADMM_utils
                 norm_rel_position = sqrt((x_j - x_tar).^2 + (y_j - y_tar).^2);
                 norm_rel_position = max(norm_rel_position, 1);  % Avoid division by zero
                 f_d_model = (v_x * (x_j - x_tar) + (v_y * (y_j - y_tar))) / (norm_rel_position * lambda);
-
+                
+                % Add the whitening transformation here if needed
+                if ~isempty(varargin)
+                    L = varargin{1};
+                    r_model = L(1,1) * r_model + L(1,2) * f_d_model;
+                    f_d_model = L(2,1) * r_model + L(2,2) * f_d_model;
+                end
                 for i = 1:M                    
                     % Extracting current measurements
                     r_ij = range_with_error(i,j); % Per pulse for that sensor 
@@ -53,7 +60,7 @@ classdef ADMM_utils
 
         %% Log Likelihood Function for MAP
         % function posterior = MAP(params, range_with_error, doppler_with_error, mu_r, mu_d, sigma_r, sigma_d,radar_positions, numNodes, M, lambda, Sigma_big)
-        function posterior = MAP(params, range_with_error, doppler_with_error, mu_state, sigma_state,radar_positions, numNodes, M, lambda, Sigma_big)
+        function posterior = MAP(params, range_with_error, doppler_with_error, mu_state, sigma_state,radar_positions, numNodes, M, lambda, Sigma_big, varargin)
             %%% The MAP, prior, ll should write in a loop that based on how
             %%% many noded you input, then calculate to give flexibility. 
             % Calculate prior
@@ -85,6 +92,13 @@ classdef ADMM_utils
                     norm_rel_position = max(norm_rel_position, 1);  % Avoid division by zero
                     f_d_model = (v_x * (x_j - x_tar) + (v_y * (y_j - y_tar))) / (norm_rel_position * lambda);
                     
+
+                    % Add the whitening transformation here if needed
+                    if ~isempty(varargin)
+                        L = varargin{1};
+                        r_model = L(1,1) * r_model + L(1,2) * f_d_model;
+                        f_d_model = L(2,1) * r_model + L(2,2) * f_d_model;
+                    end
                     % Extracting current measurements
                     r_ij = range_with_error(i,j); % Per pulse for that sensor 
                     f_d_ij = doppler_with_error(i,j);
@@ -150,6 +164,7 @@ classdef ADMM_utils
             for j = 1:numNodes
                     prior= prior + (1/sqrt((2*pi)^dim*det((sigma{j}))))* ((params - mu{j})' * inv((sigma{j})) * (params - mu{j}));
             end 
+            prior = (1/numNodes)*prior;
         end
         
         function prior = prior_distribution_initial_values(params, mu_r, mu_d,sigma_r,sigma_d, radar_positions, numNodes, M, lambda)
@@ -220,10 +235,15 @@ classdef ADMM_utils
         end
     
         %% LogLikelihood with Consensus
-        function ll_with_consensus = logLikelihoodWithConsensus(params, range_measurements, doppler_measurements, radar_positions, numNodes, M, lambda, Sigma_big, n, neighbors, Nu, initial_values, update_z, c_penalty)
+        function ll_with_consensus = logLikelihoodWithConsensus(params, range_measurements, doppler_measurements, radar_positions, numNodes, M, lambda, Sigma_big, n, neighbors, Nu, initial_values, update_z, c_penalty, varargin)
             ut = ADMM_utils;
-            ll = ut.logLikelihood(params, range_measurements, doppler_measurements, radar_positions, numNodes, M, lambda, Sigma_big);
-          
+
+            if ~isempty(varargin)
+                ll = ut.logLikelihood(params, range_measurements, doppler_measurements, radar_positions, numNodes, M, lambda, Sigma_big,varargin{1});
+            else
+                ll = ut.logLikelihood(params, range_measurements, doppler_measurements, radar_positions, numNodes, M, lambda, Sigma_big);
+            end
+
             x_tar = params(1);
             y_tar = params(2);
             v_x = params(3);
@@ -249,10 +269,16 @@ classdef ADMM_utils
         %                                                      M, lambda, Sigma_big, n, neighbors, Nu, initial_values, update_z, c_penalty)
         function map_with_consensus = posteriorWithConsensus(params, range_measurements, doppler_measurements, ...
                                                             prior_mean, prior_sigma, radar_positions, numNodes, ...
-                                                             M, lambda, Sigma_big, n, neighbors, Nu, initial_values, update_z, c_penalty)
+                                                             M, lambda, Sigma_big, n, neighbors, Nu, initial_values, update_z, c_penalty,...
+                                                             varargin)
             ut = ADMM_utils;
             % posterior = ut.MAP(params, range_measurements, doppler_measurements, prev_r, prev_v, sigma_r, sigma_v,radar_positions, numNodes, M, lambda, Sigma_big);
-            posterior = ut.MAP(params, range_measurements, doppler_measurements, prior_mean, prior_sigma, radar_positions, numNodes, M, lambda, Sigma_big);
+            if ~isempty(varargin)
+                posterior = ut.MAP(params, range_measurements, doppler_measurements, prior_mean, prior_sigma, radar_positions, numNodes, M, lambda, Sigma_big, varargin{1});
+            else
+                posterior = ut.MAP(params, range_measurements, doppler_measurements, prior_mean, prior_sigma, radar_positions, numNodes, M, lambda, Sigma_big);
+            end
+
             sum_L1 = 0;
             sum_L2 = 0;
             for j = neighbors{n}

@@ -12,39 +12,51 @@ function plot_state_mse_from_json(files,mode)
             [~, folder_name] = fileparts(folder);
             legendNames{i} = ['Run-', folder_name];
     end
-    figure;
+    figure('Color','w');
+    
     for i = 1:numel(files)
         S = jsondecode(fileread(files{i}));
-        all_estimations_every_iter_mc = cell({{squeeze(S.all_estimations_every_iter_mc)}});
+        
         true_params_mc = S.true_params_mc';
-
-        display_node = 1; % Change this to select different node for display
+        switch lower(mode)
+            case 'one'
+            display_node = 1; % Change this to select different node for display
+            all_estimations_every_iter_mc = cell({{squeeze(S.all_estimations_every_iter_mc)}});
+            case 'mean'
+            all_estimations_every_iter_mc = cell({{squeeze(mean(squeeze(S.all_estimations_every_iter_mc),2))}});
+        end
         param_names = {'x','y','vx','vy'};
         param_labels = {'Position X Error','Position Y Error','Velocity X Error','Velocity Y Error'};
-        
         for param = 1:4
             subplot(2,2,param);
             hold on; grid on;
+            set(gca,'FontName','Times New Roman','FontSize',14,'LineWidth',1.0);
             % Initialize a cell array to store plot handles
             hPlots = cell(1, length(all_estimations_every_iter_mc)); % +2 for centralized approach and true parameter error line
 
             % Plot estimation errors with specific color and store handles
             for j = 1:length(all_estimations_every_iter_mc)
                 % Calculate estimation error as estimation minjus true parameter
-                errors = (squeeze(all_estimations_every_iter_mc{j}{:}(param, display_node, :)) - true_params_mc(j,param)).^2;
+                switch lower(mode)
+                    case 'one'
+                    errors = (squeeze(all_estimations_every_iter_mc{j}{:}(param, display_node, :)) - true_params_mc(j,param)).^2;
+                    case 'mean'
+                    errors = (squeeze(all_estimations_every_iter_mc{j}{:}(param, :)) - true_params_mc(j,param)).^2;
+                end
                 % hPlots{j} = semilogy(errors, 'Color', colors(i, :));
-                hPlots{j} = semilogy(errors,'LineWidth',1.5);
+                hPlots{j} = semilogy(errors,'LineWidth',1.5,'DisplayName',legendNames{i});
             end
             set(gca, 'YScale','log');
             hold off; 
-            xlabel('Iterations');
+            xlabel('Iterations','FontSize',16);
+            legend('FontSize',11)
             % legend([hPlots{:}], legendNames{i});
-            legend(legendNames{:});
-            ylabel(['MSE for ' labels_params{param}]);
+            % legend(legendNames{:});
+            ylabel(['MSE ' labels_params{param}],'FontSize',16);
             % title(['MSE in ' obj.labels_params{param}]);
         end
-        
     end
+    sgtitle('MSE by States','fontsize',20,'FontName','Times New Roman', 'FontWeight','bold');
     
 end
 function plot_mse_from_json(files, varargin)
@@ -109,11 +121,11 @@ assert(numel(opt.Labels)==nF, 'Labels 數量需與 files 相同');
 
 % ---------- 繪圖設定 ----------
 figure('Color','w'); hold on; grid on;
-set(gca,'FontName','Times New Roman','FontSize',11,'LineWidth',1.0);
-xlabel('Iteration','FontSize',12);
+set(gca,'FontName','Times New Roman','FontSize',22,'LineWidth',1.0);
+xlabel('Iteration','FontSize',20);
 switch lower(opt.Mode)
-    case 'mse',      ylabel('MSE','FontSize',12);
-    case 'residual', ylabel('Residual','FontSize',12);
+    case 'mse',      ylabel('MSE','FontSize',20);
+    case 'residual', ylabel('Residual','FontSize',20);
 end
 
 switch lower(opt.YScale)
@@ -221,7 +233,7 @@ for i = 1:nF
 end
 
 legend(opt.Labels, 'Location','best', 'Interpreter','none', 'Box','off');
-title(sprintf('Metric vs Iteration (%s)', upper(opt.Mode)));
+title(sprintf('Metric vs Iteration (%s)', lower(opt.Mode)),'FontSize',20);
 
 % 把數據丟到 base 方便你存取
 assignin('base','last_curves',curves);
@@ -388,11 +400,17 @@ end
 
 
 %------ Main Script Example ------
+% files = {
+%     './data_log/MLE/data_config.json'
+%     './data_log/MAP/data_config.json'
+%     './data_log/MLE_w/data_config.json'
+%     './data_log/MAP_w/data_config.json'
+% };
 files = {
     './data_log/MLE/data_config.json'
     './data_log/MAP/data_config.json'
 };
-ref = [1000; 1000; -14.141; 14.141]; % 例如狀態真值（請換成你的 4×1）
+% ref = [1000; 1000; -14.141; 14.141]; % 例如狀態真值（請換成你的 4×1）
 % plot_mse_from_json(files, 'Ref', ref, ...
 %     'Mode','residual', 'Labels',{'MLE','MAP'}, ...
 %     'YScale','semilog', 'MovingAvg',3, 'LW',2.0);
@@ -400,8 +418,22 @@ ref = [1000; 1000; -14.141; 14.141]; % 例如狀態真值（請換成你的 4×1
 %     'Mode','mse', 'Labels',{'MLE','MAP'}, ...
 %     'YScale','semilog', 'MovingAvg',3, 'LW',2.0);
 
-% plot_mse_from_json(files,...
-%     'Mode','mse', 'Labels',{'MLE','MAP'}, ...
-%     'YScale','semilog', 'MovingAvg',3, 'LW',2.0);
+% Overall MSE
+plot_mse_from_json(files,...
+    'Mode','mse', 'Labels',{'MLE','MAP'}, ...
+    'YScale','semilog', 'MovingAvg',3, 'LW',2.0);
 
-plot_state_mse_from_json(files);
+% Primal residual
+plot_mse_from_json(files, ...
+    'Mode','residual', 'ResidualType','primal',...
+    'Labels',{'MLE','MAP'}, ...
+    'YScale','semilog', 'MovingAvg',3, 'LW',2.0);
+
+% Dual residual
+plot_mse_from_json(files, ...
+    'Mode','residual', 'ResidualType','dual',...
+    'Labels',{'MLE','MAP'}, ...
+    'YScale','semilog', 'MovingAvg',3, 'LW',2.0);
+
+% State MSE
+plot_state_mse_from_json(files, 'mean');

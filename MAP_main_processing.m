@@ -1,9 +1,10 @@
 clc; close all; clear;
 ut = ADMM_utils;
-DEBUG=false; % To see verbose
+DEBUG=true; % To see verbose
 TYPE="MAP";
+PRE_WHITEN=false;
 %TODO: 
-% 1. Write a text file to export config. / parameters setup of the run
+% 1. Write a text file to export conm6fig. / parameters setup of the run
 % 2. Make the algorithm to be parallel computing?
 %-- Config. of the run
 num_monte_carol = 1;
@@ -28,7 +29,9 @@ end
 
 knn = 5;
 com_rad_CR= 3000; % Communication radius in CD
+%%%%%%%%%% Prior setup
 
+%%%%%%%%%%%
 
 % Signal and environment parameters
 env.c = 3e8;
@@ -129,6 +132,7 @@ for mc = 1:num_monte_carol
         [range_true, doppler_true, measurements_true] = ut.gt_data_generation(range_true,doppler_true, measurements_true, target,network_topo,env, M);
         measurements_true_all = reshape(measurements_true, [], 1);% flatten
         
+      
         % Calculate Noise for range and Doppler from signal model
         % TODO: This can also be set into env. params
         range_var = (3 * env.c^2) / (8 * pi^2 * env.B(1)^2 * SNR_lin) ;
@@ -139,6 +143,17 @@ for mc = 1:num_monte_carol
         % 2x2 covariance matrix Sigma
         Sigma = [range_var, rho * range_sd * doppler_sd; rho * range_sd * doppler_sd, doppler_var];   
         total_measurements = numNodes * M;    
+        if PRE_WHITEN
+            pre_whit_L = inv(chol(Sigma,'lower'));
+            Sigma = eye(2);
+        else
+            pre_whit_L = eye(2);
+        end
+
+        % if PRE_WHITEN
+        %     range_true = pre_whit_L(1,1) * range_true + pre_whit_L(1,2) * doppler_true;
+        %     doppler_true = pre_whit_L(2,1) * range_true + pre_whit_L(2,2) * doppler_true;
+        % end 
     
         % Sigma_big is of the size 2NM x 2NM, 2= (range, doppler), 
          % Generate range and Doppler shift's noisy measurements
@@ -152,6 +167,10 @@ for mc = 1:num_monte_carol
         % y_hat = y_gt + noise
         range_with_error = range_true + range_noise_all;
         doppler_with_error = doppler_true + doppler_noise_all;
+        if PRE_WHITEN
+            range_with_error = pre_whit_L(1,1) * range_with_error + pre_whit_L(1,2) * doppler_with_error;
+            doppler_with_error = pre_whit_L(2,1) * range_with_error + pre_whit_L(2,2) * doppler_with_error;
+        end 
         measurements_with_error_all = measurements_true_all + noise_matrix;
         
         range_with_error_CA = range_with_error;
@@ -162,13 +181,18 @@ for mc = 1:num_monte_carol
         prior_mu = cell(1, numNodes);
         prior_sigma = cell(1, numNodes);
         if TYPE == "MAP"
-            prior_mu = repmat({[1000; 1000; -14; 14]}, 1,numNodes);
-            prior_sigma = repmat({eye(4)}, 1,numNodes);
-            prior_sigma = repmat({[range_var,0,0,0; ...
+            prior_mu = repmat({[0; 0; 0; 0]}, 1,numNodes);
+
+            if PRE_WHITEN
+                prior_sigma = repmat({eye(4)}, 1,numNodes);
+
+            else
+                prior_sigma = repmat({[range_var,0,0,0; ...
                                     0,range_var,0,0;...
                                     0,0,doppler_var,0;...
                                     0,0,0,doppler_var]}, 1,numNodes);
-           
+            end
+
         elseif TYPE == "MLE"
             % Give the dummy variable
             prior_mu = repmat({[0; 0; 0; 0]}, 1,numNodes);
@@ -178,17 +202,32 @@ for mc = 1:num_monte_carol
     
 
         % y_0 and lower, upper bound
-        initial_guess = [1000, 1000, -14, 14]';
+        % initial_guess = [1000, 1000, 10, 10]';
+        initial_guess = [0, 0, 0, 0]';
         lb = [-inf,-inf,-inf,-inf];
         ub = [inf,inf, inf, inf];
         if TYPE == "MLE"
-            disp("----- Optimized using MLE obj function-------")
-            fun = @(params) ut.logLikelihood(params, range_with_error_CA, doppler_with_error_CA, network_topo.radar_pos, network_topo.numNodes, M, env.lambda, Sigma_big);
+            if PRE_WHITEN
+                fun = @(params) ut.logLikelihood(params, range_with_error_CA, doppler_with_error_CA, ...
+                                            network_topo.radar_pos, network_topo.numNodes, M, env.lambda,...
+                                             Sigma_big, pre_whit_L);
+            else
+                fun = @(params) ut.logLikelihood(params, range_with_error_CA, doppler_with_error_CA, ...
+                                            network_topo.radar_pos, network_topo.numNodes, M, env.lambda,...
+                                             Sigma_big);
+            end
 
         elseif TYPE == "MAP"
-            disp("----- Optimized using MAP obj function-------")
             % fun = @(params) ut.MAP(params, range_with_error_CA, doppler_with_error_CA, mu_r, mu_d, sigma_r, sigma_d, network_topo.radar_pos, network_topo.numNodes, M, env.lambda, Sigma_big);
-            fun = @(params) ut.MAP(params, range_with_error_CA, doppler_with_error_CA, prior_mu, prior_sigma, network_topo.radar_pos, network_topo.numNodes, M, env.lambda, Sigma_big);
+            if PRE_WHITEN
+                fun = @(params) ut.MAP(params, range_with_error_CA, doppler_with_error_CA, prior_mu, ...
+                                  prior_sigma, network_topo.radar_pos, network_topo.numNodes, M, ...
+                                  env.lambda, Sigma_big,pre_whit_L);
+            else
+                fun = @(params) ut.MAP(params, range_with_error_CA, doppler_with_error_CA, prior_mu, ...
+                                  prior_sigma, network_topo.radar_pos, network_topo.numNodes, M, ...
+                                  env.lambda, Sigma_big);
+            end
         end
         [estimated_params_CA, log_likelihood, exitflag, output] = fmincon(fun, initial_guess,[],[],[],[], lb, ub, [],options_CA);
         estimates_mc_CA(mc, :) = estimated_params_CA;
@@ -239,8 +278,8 @@ for mc = 1:num_monte_carol
         % c_penalty = [10^2, 10^2, 3*5, 3*5]; % For SNR 50dB
         % c_penalty = [1e3,1e3, 3e5, 3e5]; % For SNR 50dxB
         % c_penalty = [1e2,1e2,3e3,3e3];
-        % initial_values = repmat([1000, 1000, 10, 10]', 1,numNodes);
-        initial_values = repmat([1000, 1000, 0, 0]', 1,numNodes);
+        initial_values = repmat([1000, 1000, 10, 10]', 1,numNodes);
+        % initial_values = repmat([0, 0, 0, 0]', 1,numNodes);
         Nu = cell(1, numNodes);
         Nu_prev = cell(1, numNodes);
         update_z = cell(1, numNodes);
@@ -288,13 +327,31 @@ for mc = 1:num_monte_carol
                 end
                 % Eq. (4.17a)
                 if TYPE == "MLE"
-                    fun = @(params) ut.logLikelihoodWithConsensus(params, range_with_error_cell{n}, doppler_with_error_cell{n}, radar_positions_cell{n},numNodes_cell{n}, M, env.lambda, Sigma_big_2_cell{n}, n, neighbors, Nu, initial_values, update_z_prev, c_penalty);
+                    if PRE_WHITEN
+                        fun = @(params) ut.logLikelihoodWithConsensus(params, range_with_error_cell{n}, doppler_with_error_cell{n}, ...
+                                                                 radar_positions_cell{n},numNodes_cell{n}, M, env.lambda,...
+                                                                Sigma_big_2_cell{n}, n, neighbors, Nu, initial_values, update_z_prev, c_penalty,...
+                                                                pre_whit_L);
+                    else
+                        fun = @(params) ut.logLikelihoodWithConsensus(params, range_with_error_cell{n}, doppler_with_error_cell{n}, ...
+                                                                 radar_positions_cell{n},numNodes_cell{n}, M, env.lambda,...
+                                                                Sigma_big_2_cell{n}, n, neighbors, Nu, initial_values, update_z_prev, c_penalty);
+                    end
+                    
                 
                 elseif TYPE == "MAP"
-                    fun = @(params) ut.posteriorWithConsensus(params, range_with_error_cell{n}, doppler_with_error_cell{n}, ...
+                    if PRE_WHITEN
+                        fun = @(params) ut.posteriorWithConsensus(params, range_with_error_cell{n}, doppler_with_error_cell{n}, ...
+                                                            prior_mu_cell{n}, prior_sigma_cell{n}, radar_positions_cell{n}, ...
+                                                            numNodes_cell{n}, M, env.lambda, Sigma_big_2_cell{n}, ...
+                                                            n, neighbors, Nu, initial_values, update_z_prev, c_penalty,...
+                                                            pre_whit_L);
+                    else
+                        fun = @(params) ut.posteriorWithConsensus(params, range_with_error_cell{n}, doppler_with_error_cell{n}, ...
                                                             prior_mu_cell{n}, prior_sigma_cell{n}, radar_positions_cell{n}, ...
                                                             numNodes_cell{n}, M, env.lambda, Sigma_big_2_cell{n}, ...
                                                             n, neighbors, Nu, initial_values, update_z_prev, c_penalty);
+                    end
                 end
                 estimated_params = fmincon(fun, initial_values(:,n),[],[],[],[], lb, ub, [],options_DA);
                 all_estimations(:,n) = estimated_params;
@@ -413,24 +470,24 @@ fig_ut = make_figs(network_topo.numNodes);
 %-- Plot covergence of ADMM across all nodes
 % fig_ut.plot_converge_across_node(all_estimations_every_iter,true_params,network_topo);
 fig_ut.plot_converge_across_node_withCentrl(all_estimations_every_iter,true_params,network_topo,estimates_mc_CA);
-% %-- Plot dual & primal residual
-fig_ut.plot_dual_primal_residual(dual_residual_all,primal_residual_CR, all_estimations_every_iter_CR,laplacian_matrix_CR,network_topo);
+% % %-- Plot dual & primal residual
+% fig_ut.plot_dual_primal_residual(dual_residual_all,primal_residual_CR, all_estimations_every_iter_CR,laplacian_matrix_CR,network_topo);
+% % %-- 
+% node_to_show = 3;
+% fig_ut.plot_specific_node_converg(node_to_show,com_rad_CR,laplacian_matrix_CR,all_estimations_every_iter_CR,estimated_params_CA,network_topo,true_params);
+% fig_ut.plot_sepcific_node_error_converg(all_estimations_every_iter_mc,estimates_mc_CA,direction_mc,true_params_mc);
+% % 
 % %-- 
-node_to_show = 3;
-fig_ut.plot_specific_node_converg(node_to_show,com_rad_CR,laplacian_matrix_CR,all_estimations_every_iter_CR,estimated_params_CA,network_topo,true_params);
-fig_ut.plot_sepcific_node_error_converg(all_estimations_every_iter_mc,estimates_mc_CA,direction_mc,true_params_mc);
-% 
-%-- 
-fig_ut.plot_MSE_error(direction_mc,all_estimations_every_iter_mc,true_params_mc);
-% 
-% %-- Plot measurement errors of all neighhbors
-fig_ut.plot_errors_all_neighbors(com_rad_CR, laplacian_matrix_CR, all_estimations_every_iter_CR, estimated_params_CA,network_topo,true_params);
-% 
-% %-- 
-fig_ut.plot_MSE_for_all_neightbors(com_rad_CR,laplacian_matrix_CR,estimated_params_CA,all_estimations_every_iter_CR,true_params,network_topo);
+% fig_ut.plot_MSE_error(direction_mc,all_estimations_every_iter_mc,true_params_mc);
+% % 
+% % %-- Plot measurement errors of all neighhbors
+% fig_ut.plot_errors_all_neighbors(com_rad_CR, laplacian_matrix_CR, all_estimations_every_iter_CR, estimated_params_CA,network_topo,true_params);
+% % 
+% % %-- 
+% fig_ut.plot_MSE_for_all_neightbors(com_rad_CR,laplacian_matrix_CR,estimated_params_CA,all_estimations_every_iter_CR,true_params,network_topo);
 % 
 % %--
-fig_ut.plot_MSE_error_compare_DA_DS(direction_mc,all_estimations_every_iter_mc,estimates_mc_CA, true_params_mc);
+% fig_ut.plot_MSE_error_compare_DA_DS(direction_mc,all_estimations_every_iter_mc,estimates_mc_CA, true_params_mc);
 
 % figure;
 % 
