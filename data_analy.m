@@ -98,7 +98,7 @@ p = inputParser;
 addRequired(p, 'files', @(x) ischar(x) || isstring(x) || iscellstr(x) || isstring(x));
 addParameter(p, 'Ref', [], @(x) isempty(x) || (isnumeric(x) && numel(x)==4));
 addParameter(p, 'Mode', 'mse', @(x) any(strcmpi(x, {'mse','residual'})));
-addParameter(p, 'ResidualType', 'primal', @(x) any(strcmpi(x, {'primal','dual'})));
+addParameter(p, 'ResidualType', '', @(x) any(strcmpi(x, {'primal','dual'})));
 addParameter(p, 'Labels', [], @(x) iscell(x) || isempty(x));
 addParameter(p, 'YScale', 'semilog', @(x) any(strcmpi(x, {'linear','semilog','loglog'})));
 addParameter(p, 'IterRange', [], @(x) isempty(x) || (isnumeric(x) && numel(x)==2));
@@ -148,9 +148,9 @@ for i = 1:nF
             switch lower(opt.ResidualType)
                 case 'primal'
                     % 取第一組 primal 殘差序列
-                    y = first_numeric_row(S, 'primal_residual_mc');
+                    y = sqrt(first_numeric_row(S, 'primal_residual_mc'));
                 case 'dual'
-                    y = first_numeric_row(S, 'dual_residual_mc');
+                    y = sqrt(first_numeric_row(S, 'dual_residual_mc'));
             end
 
         case 'mse'
@@ -163,16 +163,20 @@ for i = 1:nF
             % 將巢狀陣列展開成 cell: 每個 cell 是 1×T 的「某一 state@某節點」的序列
             % The original shape of all_estimations_every_iter_mc is 4 x num_nodes x num_iters of ADMM (for one localization)
             % Here we  first calculate the mean estimation cross node, so become 4 x num_iters 
-            A = squeeze(mean(squeeze(A),2));
-            seqs = mat2cell(A, ones(size(A,1),1), size(A,2)); % each cell is 1 x T
-
+            % A = squeeze(mean(squeeze(A),2));
+            
+            A = squeeze(A);
+            mean_A = squeeze(mean(squeeze(A),2));
+            seqs = mat2cell(A,ones(size(A,1),1),size(A,2),size(A,3));
+            mean_seqs = mat2cell(mean_A, ones(size(mean_A,1),1),size(mean_A,2)); % each cell is 1 x T
             % 決定參考 ref
             % 優先順序：使用者給的 Ref > JSON 的 true_params > 退而求其次用首迭代均值
             ref = opt.Ref;
 
             % 決定群組數（每 4 條序列視為一組：x,y,vx,vy）
-            nSeq = numel(seqs);
-            T = numel(seqs{1});
+            nSeq = numel(mean_seqs);
+            nNode = size(seqs{1},2);
+            T = numel(mean_seqs{1});
             assert(mod(nSeq,4)==0, '序列數非 4 的倍數，請依實際資料調整配對規則');
             nGroup = nSeq/4;
 
@@ -205,7 +209,8 @@ for i = 1:nF
                 for d = 1:4
                     idx = (g-1)*4 + d;
                     err = seqs{idx} - ref_g(d);
-                    sqerr_sum = sqerr_sum + (err.^2);
+                    % sqerr_sum = sqerr_sum + (err.^2);
+                    sqerr_sum = sqerr_sum + (1/nNode)*squeeze(sum(err.^2,2))';
                 end
             end
             y = sqerr_sum / (nGroup*4);
@@ -228,12 +233,26 @@ for i = 1:nF
     end
 
     % 畫線
-    plt = plot(x, y, 'LineWidth', opt.LW, 'Marker', '.', 'MarkerSize', opt.MS);
+    plt = plot(x, y, 'LineWidth', opt.LW, 'Marker', '.', 'MarkerSize', opt.MS, 'DisplayName', opt.Labels{i});
     curves{i} = y; %#ok<AGROW>
+
+
+    switch lower(opt.Mode)
+    case 'mse'
+        % Help me to write a more elegant code to plot the centralized MSE line in the for loop, with changing color and legend 
+        ctrl_est = S.estimates_mc_CA;
+        ctrl_mse = ctrl_est - S.true_params_mc;
+        ctrl_mse = mean(ctrl_mse.^2, 'all');
+        yline(ctrl_mse,'LineWidth',1.5,'Color',plt.Color,'LineStyle','--','DisplayName',append(S.TYPE,' (Centr.)'));
+        % legend([opt.Labels,append(S.TYPE,'(Centralized)')], 'Location','best', 'Interpreter','latex', 'Box','on');
+
+    otherwise
+        % legend(opt.Labels, 'Location','best', 'Interpreter','latex', 'Box','on');
+    end
 end
 
-legend(opt.Labels, 'Location','best', 'Interpreter','none', 'Box','off');
-title(sprintf('Metric vs Iteration (%s)', lower(opt.Mode)),'FontSize',20);
+legend('Location','best', 'Interpreter','latex', 'Box','on');
+title(sprintf('Metric vs Iteration (%s %s)',lower(opt.ResidualType), lower(opt.Mode)),'FontSize',20);
 
 % 把數據丟到 base 方便你存取
 assignin('base','last_curves',curves);
@@ -420,20 +439,20 @@ files = {
 
 % Overall MSE
 plot_mse_from_json(files,...
-    'Mode','mse', 'Labels',{'MLE','MAP'}, ...
+    'Mode','mse', 'Labels',{'MLE (Decentr.)','MAP (Decentr.)'}, ...
     'YScale','semilog', 'MovingAvg',3, 'LW',2.0);
 
-% Primal residual
-plot_mse_from_json(files, ...
-    'Mode','residual', 'ResidualType','primal',...
-    'Labels',{'MLE','MAP'}, ...
-    'YScale','semilog', 'MovingAvg',3, 'LW',2.0);
-
-% Dual residual
-plot_mse_from_json(files, ...
-    'Mode','residual', 'ResidualType','dual',...
-    'Labels',{'MLE','MAP'}, ...
-    'YScale','semilog', 'MovingAvg',3, 'LW',2.0);
-
-% State MSE
-plot_state_mse_from_json(files, 'mean');
+% % Primal residual
+% plot_mse_from_json(files, ...
+%     'Mode','residual', 'ResidualType','primal',...
+%     'Labels',{'MLE','MAP'}, ...
+%     'YScale','semilog', 'MovingAvg',3, 'LW',2.0);
+% 
+% % Dual residual
+% plot_mse_from_json(files, ...
+%     'Mode','residual', 'ResidualType','dual',...
+%     'Labels',{'MLE','MAP'}, ...
+%     'YScale','semilog', 'MovingAvg',3, 'LW',2.0);
+% 
+% % State MSE
+% plot_state_mse_from_json(files, 'mean');
