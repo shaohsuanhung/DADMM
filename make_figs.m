@@ -377,7 +377,6 @@ classdef make_figs
             sgtitle('$\left(\hat{\theta}_n - \theta\right)^2$ for different directions with 19/20 neighbors', 'Interpreter', 'latex');
 
         end
-
         function plot_predictions(obj, time_vector, all_predictions, true_trajectory, network_topo)
             figure;
             set(gcf,'Color','white');
@@ -414,7 +413,6 @@ classdef make_figs
             legend_entries{end+1} = 'True Trajectory';
             legend([legend_entries], 'Location', 'northeastoutside');
         end
-
         function plot_trajectory(obj, true_trajectory, estimated_trajectory)
             % Shape of the inputs:
             % true_trajectory: [Num target, track_time, 2]
@@ -424,12 +422,26 @@ classdef make_figs
             set(gcf,'Color','white');
             set(gca,'FontSize',24);
             hold on;
-            plot(true_trajectory(1, :, 1), true_trajectory(1, :, 2), '--ok', 'LineWidth', 1.5, 'DisplayName', 'True Trajectory');
-            plot(estimated_trajectory(1,:), estimated_trajectory(2,:), '--ob', 'LineWidth', 1.5, 'DisplayName', 'Estimated Trajectory');
+            plot(true_trajectory(1, :, 1), true_trajectory(1, :, 2), '.', 'LineWidth', 1.5, 'DisplayName', 'True Trajectory');
+            plot(estimated_trajectory(1,:), estimated_trajectory(2,:), '-ob', 'LineWidth', 1.5, 'DisplayName', 'Estimated Trajectory');
             hold off;
             xlabel('Position x (m)');
             ylabel('Position y (m)');
             title('Target Trajectory');
+            legend('Location', 'northeastoutside');
+        end
+
+        function plot_geometry_and_target(obj, network_topo, target_position)
+            figure;
+            set(gcf,'Color','white');
+            set(gca,'FontSize',24);
+            hold on;
+            plot(network_topo.radar_pos(:,1), network_topo.radar_pos(:,2), 'rs', 'MarkerSize', 10, 'DisplayName', 'Sensor Nodes');
+            plot(target_position(1), target_position(2), 'k*', 'MarkerSize', 10, 'DisplayName', 'Target Position');
+            hold off;
+            xlabel('Position x (m)');
+            ylabel('Position y (m)');
+            title('Network Geometry and Target Position');
             legend('Location', 'northeastoutside');
         end
     end

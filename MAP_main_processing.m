@@ -16,6 +16,9 @@ theta = linspace(0,2*pi, network_topo.numNodes+1);
 network_topo.theta = theta(1:end-1);
 network_topo.com_rad_CR = 3000; % communication radius range
 network_topo.radius = 3000;     % spatial placement radius 
+% n = 10;a = 1000;   % half-width
+% x = -a + 2*a*rand(n,1);y = -a + 2*a*rand(n,1);coords = [x, y];
+% network_topo.radar_pos = coords;
 network_topo.radar_pos = network_topo.radius * [cos(network_topo.theta); sin(network_topo.theta)]';
 network_topo.C_distance = 1;  % Cost per meter
 network_topo.C_data = 1;      % Cost per byte
@@ -70,10 +73,6 @@ for mc = 1:num_monte_carol
 
     disp('Direction the target is travelling:');
     disp(target.direction);
-
-
-    %-- Initialize M (measurements)
-    time_vector = 0:env.time_step:M_values * env.time_step; % Adjust time vector for each M, time_step
     
     % Preallocate for plotting
     RMSEs = zeros(length(node_range), 4); % 4 parameters
@@ -139,7 +138,7 @@ for mc = 1:num_monte_carol
         doppler_var = (3 * ((env.fs(1))^2)) / (pi^2 * SNR_lin * M^3) ;
         range_sd = sqrt(range_var);
         doppler_sd = sqrt(doppler_var);
-        rho = 0.0;  
+        rho = 0;  
         % 2x2 covariance matrix Sigma
         Sigma = [range_var, rho * range_sd * doppler_sd; rho * range_sd * doppler_sd, doppler_var];   
         total_measurements = numNodes * M;    
@@ -167,6 +166,8 @@ for mc = 1:num_monte_carol
         % y_hat = y_gt + noise
         range_with_error = range_true + range_noise_all;
         doppler_with_error = doppler_true + doppler_noise_all;
+        % range_with_error = range_true;
+        % doppler_with_error = doppler_true ;
         if PRE_WHITEN
             range_with_error = pre_whit_L(1,1) * range_with_error + pre_whit_L(1,2) * doppler_with_error;
             doppler_with_error = pre_whit_L(2,1) * range_with_error + pre_whit_L(2,2) * doppler_with_error;
@@ -181,10 +182,10 @@ for mc = 1:num_monte_carol
         prior_mu = cell(1, numNodes);
         prior_sigma = cell(1, numNodes);
         if TYPE == "MAP"
-            prior_mu = repmat({[0; 0; 0; 0]}, 1,numNodes);
+            prior_mu = repmat({[1000; 1000; -14; 14]}, 1,numNodes); % {1xN}, each cell is 4x1 vector
 
             if PRE_WHITEN
-                prior_sigma = repmat({eye(4)}, 1,numNodes);
+                prior_sigma = repmat({eye(4)}, 1,numNodes); % {1xN}, each cell is 4x4 vector
 
             else
                 prior_sigma = repmat({[range_var,0,0,0; ...
@@ -202,8 +203,8 @@ for mc = 1:num_monte_carol
     
 
         % y_0 and lower, upper bound
-        % initial_guess = [1000, 1000, 10, 10]';
-        initial_guess = [0, 0, 0, 0]';
+        initial_guess = [1000, 1000, 10, 10]';
+        % initial_guess = [0, 0, 0, 0]';
         lb = [-inf,-inf,-inf,-inf];
         ub = [inf,inf, inf, inf];
         if TYPE == "MLE"
@@ -242,7 +243,7 @@ for mc = 1:num_monte_carol
         radar_positions_cell = cell(1, numNodes);
         Sigma_big_1_cell = cell(1, numNodes);
         Sigma_big_2_cell = cell(1, numNodes);
-        proir_mu_cell = cell(1,network_topo.numNodes);
+        prior_mu_cell = cell(1,network_topo.numNodes);
         prior_sigma_cell = cell(1,network_topo.numNodes);
         sigma_r_cell = cell(1,network_topo.numNodes);
         sigma_d_cell = cell(1,network_topo.numNodes);
@@ -374,12 +375,22 @@ for mc = 1:num_monte_carol
             dual_residual_by_node  = zeros(4,network_topo.numNodes);
             for n = 1: network_topo.numNodes
                 for j = neighbors{n}
+                    % % Calculate the primal residual, Eq.4.18
+                    % primal_residual = primal_residual + norm(all_estimations(:,n) - update_z{n}(:,j), 2)^2;
+                    % % primal_residual = primal_residual + norm(all_estimations(:,n) - update_z{n}(:,j), 2);
+                    % primal_residual_params = primal_residual_params + abs(all_estimations(:,n) - update_z{n}(:,j));
+                    % % Calculate the dual residual, Eq.4.19
+                    % dual_residual = dual_residual + norm(Nu{n}(:,j) - Nu_prev{n}(:,j))^2;
+                    % % dual_residual = dual_residual + norm(Nu{n}(:,j) - Nu_prev{n}(:,j));
+                    % dual_residual_params = dual_residual_params + abs(Nu{n}(:,j) - Nu_prev{n}(:,j));
+
+
                     % Calculate the primal residual, Eq.4.18
-                    primal_residual = primal_residual + norm(all_estimations(:,n) - update_z{n}(:,j), 2)^2;
+                    primal_residual = primal_residual + (norm(all_estimations(:,n) - update_z{n}(:,j), 2)^2);
                     % primal_residual = primal_residual + norm(all_estimations(:,n) - update_z{n}(:,j), 2);
                     primal_residual_params = primal_residual_params + abs(all_estimations(:,n) - update_z{n}(:,j));
                     % Calculate the dual residual, Eq.4.19
-                    dual_residual = dual_residual + norm(Nu{n}(:,j) - Nu_prev{n}(:,j))^2;
+                    dual_residual = dual_residual + (norm(Nu{n}(:,j) - Nu_prev{n}(:,j))^2);
                     % dual_residual = dual_residual + norm(Nu{n}(:,j) - Nu_prev{n}(:,j));
                     dual_residual_params = dual_residual_params + abs(Nu{n}(:,j) - Nu_prev{n}(:,j));
                 end
@@ -450,7 +461,7 @@ experiment_params_log.NUM_CPI_PER_MEA = M_values;
 experiment_params_log.TRACK_TIME = 1; % Since this is the localization case
 experiment_params_log.TYPE = TYPE;
 experiment_params_log.constant = env;
-experiment_params_log.primal_residual_mc = primal_residual_CR;
+experiment_params_log.primal_residual_mpc = primal_residual_CR;
 experiment_params_log.dual_residual_mc  = dual_residual_CR;
 experiment_params_log.all_estimations_every_iter_mc = all_estimations_every_iter_CR;
 experiment_params_log.true_params_mc = true_params_mc;
@@ -470,7 +481,7 @@ fig_ut = make_figs(network_topo.numNodes);
 %-- Plot covergence of ADMM across all nodes
 % fig_ut.plot_converge_across_node(all_estimations_every_iter,true_params,network_topo);
 fig_ut.plot_converge_across_node_withCentrl(all_estimations_every_iter,true_params,network_topo,estimates_mc_CA);
-% % %-- Plot dual & primal residual
+% %-- Plot dual & primal residual
 % fig_ut.plot_dual_primal_residual(dual_residual_all,primal_residual_CR, all_estimations_every_iter_CR,laplacian_matrix_CR,network_topo);
 % % %-- 
 % node_to_show = 3;
@@ -489,6 +500,9 @@ fig_ut.plot_converge_across_node_withCentrl(all_estimations_every_iter,true_para
 % %--
 % fig_ut.plot_MSE_error_compare_DA_DS(direction_mc,all_estimations_every_iter_mc,estimates_mc_CA, true_params_mc);
 
+
+%--
+fig_ut.plot_geometry_and_target(network_topo, target.target_position);
 % figure;
 % 
 % for param = 1:4

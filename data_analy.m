@@ -10,7 +10,7 @@ function plot_state_mse_from_json(files,mode)
             % Format the direction values to two decimal places
             [folder, ~, ~]= fileparts(files{i});
             [~, folder_name] = fileparts(folder);
-            legendNames{i} = ['Run-', folder_name];
+            legendNames{i} =  [folder_name,' (Decentr.)'];
     end
     figure('Color','w');
     
@@ -18,6 +18,8 @@ function plot_state_mse_from_json(files,mode)
         S = jsondecode(fileread(files{i}));
         
         true_params_mc = S.true_params_mc';
+
+         % To select the MSE of which node, we have two modes: 'one' or 'mean'
         switch lower(mode)
             case 'one'
             display_node = 1; % Change this to select different node for display
@@ -27,6 +29,9 @@ function plot_state_mse_from_json(files,mode)
         end
         param_names = {'x','y','vx','vy'};
         param_labels = {'Position X Error','Position Y Error','Velocity X Error','Velocity Y Error'};
+        % Get the centralized estimation MSE
+        ctrl_est = S.estimates_mc_CA;
+        ctrl_mse = (ctrl_est - S.true_params_mc).^2;
         for param = 1:4
             subplot(2,2,param);
             hold on; grid on;
@@ -45,6 +50,7 @@ function plot_state_mse_from_json(files,mode)
                 end
                 % hPlots{j} = semilogy(errors, 'Color', colors(i, :));
                 hPlots{j} = semilogy(errors,'LineWidth',1.5,'DisplayName',legendNames{i});
+                yline(ctrl_mse(param),'LineWidth',1.5,'Color',hPlots{j}.Color,'LineStyle','--','DisplayName',append(S.TYPE,' (Centr.)'));
             end
             set(gca, 'YScale','log');
             hold off; 
@@ -242,6 +248,7 @@ for i = 1:nF
         % Help me to write a more elegant code to plot the centralized MSE line in the for loop, with changing color and legend 
         ctrl_est = S.estimates_mc_CA;
         ctrl_mse = ctrl_est - S.true_params_mc;
+        % ctrl_mse = mean(ctrl_mse.^2, 'all');
         ctrl_mse = mean(ctrl_mse.^2, 'all');
         yline(ctrl_mse,'LineWidth',1.5,'Color',plt.Color,'LineStyle','--','DisplayName',append(S.TYPE,' (Centr.)'));
         % legend([opt.Labels,append(S.TYPE,'(Centralized)')], 'Location','best', 'Interpreter','latex', 'Box','on');
@@ -251,6 +258,7 @@ for i = 1:nF
     end
 end
 
+ylim([1e-3,1e2]);
 legend('Location','best', 'Interpreter','latex', 'Box','on');
 title(sprintf('Metric vs Iteration (%s %s)',lower(opt.ResidualType), lower(opt.Mode)),'FontSize',20);
 
@@ -454,5 +462,5 @@ plot_mse_from_json(files,...
 %     'Labels',{'MLE','MAP'}, ...
 %     'YScale','semilog', 'MovingAvg',3, 'LW',2.0);
 % 
-% % State MSE
-% plot_state_mse_from_json(files, 'mean');
+% State MSE
+plot_state_mse_from_json(files, 'mean');

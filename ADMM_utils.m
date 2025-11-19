@@ -424,38 +424,21 @@ classdef ADMM_utils
             % mea_true : [num_target x numNodes x 2M]
             % Input:
             % target.target_position : [num_target x M x 2]
-
-
             range_true = zeros(size(r_true));
             doppler_true = zeros(size(d_true));
             measurements_true = zeros(size(mea_true));
-    
-            % % Calculate range and Doppler true measurements
-            % for i = 1:num_target
-            %     for t = 1:M % Target at CPI*mea moment. 
-            %         for r = 1:network_topo.numNodes
-            %             fprintf("Progress: %g/%g \n",t,M);
-            %             % Calculate range data
-            %             range_true(t, r) = norm(reshape(target.target_position(i,t, :),size(network_topo.radar_pos(r,:))) - network_topo.radar_pos(r, :));
-        
-            %             % Calculate Doppler shift data
-            %             relative_position = network_topo.radar_pos(r, :) - reshape(target.target_position(i,t, :),size(network_topo.radar_pos(r,:))); % [x,y]
-            %             doppler_true(t, r) = dot([target.speed * target.direction], relative_position) / (norm(relative_position) * env.lambda);
-        
-            %             % Store the true measurements: range followed by Doppler
-            %             measurements_true(i,2 * t - 1, r) = range_true(t, r);  % Odd index for range
-            %             measurements_true(i,2 * t, r) = doppler_true(t, r);    % Even index for Doppler
-            %         end
-            %     end
-            % end
-            % rel_pos_t = reshape(network_topo.radar_pos,[1,network_topo.numNodes,1,2]) - reshape(target.target_position,[num_target,1,M,2]);
-            % range_true = vecnorm(rel_pos_t,2,4); % [num_target x numNodes x M]
-            radar_pos_expand =  repmat(reshape(network_topo.radar_pos,[num_target,size(network_topo.radar_pos,1),1,size(network_topo.radar_pos,2)]),[1,num_target,M,1]);
+            
+
+            % Radar_pos [# node, 2 (x,y)] (1) reshape from expand to 4 [num target(1), time(1), num node, 2]
+            % (2) repmat to [num target (remate here), time(remat here), num node, 2]
+            radar_pos_expand =  repmat(reshape(target.target_position,[num_target,size(network_topo.radar_pos,1),1,size(network_topo.radar_pos,2)]),[1,num_target,M,1]);
+
+            % target_pos [Num of target, time duration, 2] (1) reshape to [num target,1, time, num node (1),2]
+            % (2) repmat to [num target, time, num doe (remat here), 2]
             target_pos_expand = repmat(reshape(target.target_position,[num_target,1,size(target.target_position,2),size(target.target_position,3)]),[1,network_topo.numNodes,1,1]);
             relative_position = radar_pos_expand - target_pos_expand; % [num_target x numNodes x M x 2]
             %TODO: Keep work on this!
             range_true = vecnorm(relative_position,2,4); % [num_target x numNodes x M]
-            % doppler_true = dot([target.speed * target.direction], relative_position,4) / dot(range_true * env.lambda,3); % [num_target x numNodes x M]
             doppler_true = reshape(reshape(relative_position,[],2)*[target.speed * target.direction]',[num_target,network_topo.numNodes,M])./(range_true.* env.lambda);
             measurements_true(:,:, 1:2:end) = range_true; % Odd index for range
             measurements_true(:,:, 2:2:end) = doppler_true; % Even index for Doppler
@@ -472,6 +455,11 @@ classdef ADMM_utils
             doppler_noise_all = reshape(e_n(:,2), NUM_TAR, numNodes, M);
             range_with_error = range_true + range_noise_all;
             doppler_with_error = doppler_true + doppler_noise_all;
+            if env.PRE_WHITEN
+                pre_whit_L = env.pre_whit_L;
+                range_with_error = pre_whit_L(1,1) * range_with_error + pre_whit_L(1,2) * doppler_with_error;
+                doppler_with_error = pre_whit_L(2,1) * range_with_error + pre_whit_L(2,2) * doppler_with_error;
+            end
             measurements_all_with_error = zeros(NUM_TAR,numNodes, M*2);
             measurements_all_with_error(:,:, 1:2:end) = range_with_error; % Odd index for range
             measurements_all_with_error(:,:, 2:2:end) = doppler_with_error; % Even index for Doppler
@@ -553,8 +541,10 @@ classdef ADMM_utils
             end
         end 
         
-        function [range_with_error_cell,doppler_with_error_cell,numNodes_cell,radar_positions_cell] = pharse_measurements_tracking(laplacian_matrix, ...
-        range_with_error, doppler_with_error,range_with_error_cell, doppler_with_error_cell,num_tar, network_topo)
+        function [range_with_error_cell,doppler_with_error_cell,numNodes_cell,radar_positions_cell,...
+            state_mu_cell, state_cov_cell] = pharse_measurements_tracking(laplacian_matrix,...
+        range_with_error, doppler_with_error,range_with_error_cell, doppler_with_error_cell,num_tar, network_topo,...
+        state_mu, state_cov)
         % Remove mu_r, mu_d, sigma_r, sigma_dfrom input
             for i = 1: num_tar
                 for n = 1: network_topo.numNodes
@@ -565,6 +555,8 @@ classdef ADMM_utils
                     range_with_error_1 =[];
                     doppler_with_error_1 = [];
                     radar_positions_1 = [];
+                    mu_state_neighbor = {};
+                    sigma_state_neighbor = {};
                     for j = current_neighbors
                         k = k+1;
                         % 
@@ -572,6 +564,9 @@ classdef ADMM_utils
                         doppler_with_error_1(:,k) = doppler_with_error(i,j,:);
                         radar_positions_1(k,:) = network_topo.radar_pos(j,:);
                         numNodes_1 = length(current_neighbors);
+                        % Get prior parameters from neighbors
+                        mu_state_neighbor{k} = state_mu{j};
+                        sigma_state_neighbor{k} = state_cov{j};
                         % mu_r_neighbor(:,k) = mu_r(k);
                         % mu_d_neighbor(:,k) = mu_d(k);
                         % sigma_r_neighbor(:,k) = sigma_r(k);
@@ -590,6 +585,8 @@ classdef ADMM_utils
                         doppler_with_error_cell{n} = doppler_with_error_1;
                         numNodes_cell{n} = numNodes_1;
                         radar_positions_cell{n} = radar_positions_1;
+                        state_mu_cell{n} = mu_state_neighbor;
+                        state_cov_cell{n} = sigma_state_neighbor;
                         % Sigma_big_1_cell{n} = Sigma_big_1;
                         % Sigma_big_2_cell{n} = Sigma_big_2;
                         % mu_r_cell{n}        = mu_r(j);
@@ -605,6 +602,28 @@ classdef ADMM_utils
                 end
             end
         end 
+
+        function [prior_mean, prior_cov] = get_neighbors_cell(laplacian_matrix, num_tar, numNodes, estimated_params, state_cov)
+            for i = 1: num_tar
+                for n = 1: numNodes
+                    current_neighbors = find(laplacian_matrix(n, :) ~= 0);
+                    k = 0;
+                    mu_state_neighbor = {};
+                    sigma_state_neighbor = {};
+                    for j = current_neighbors
+                        k = k+1;
+                        % Get prior parameters from neighbors
+                        mu_state_neighbor{k} = estimated_params;
+                        sigma_state_neighbor{k} = state_cov;
+
+                        prior_mean{n} = mu_state_neighbor;
+                        prior_cov{n} = sigma_state_neighbor;
+                    end
+                    
+                end
+            end
+        end
+
         function write_exp_log(write_folder_path, folder_name, data_config)
             %{ 
             Build exp folder, and write log into the corresponding
@@ -632,7 +651,58 @@ classdef ADMM_utils
             decode_data_struct = jsondecode(str);
             fclose(fid);
         end
-
+        function ADMM = Initialized_ADMM(network_topo)
+            options_Dctral = optimoptions('fmincon', 'Display', 'off', ScaleProblem=true, OptimalityTolerance=1e-2, FunctionTolerance=1e-6, StepTolerance=1e-6, MaxIterations=100);
+            options_Ctral =  optimoptions('fmincon', 'Display', 'off', ScaleProblem=true, OptimalityTolerance=1e-6, FunctionTolerance=1e-6, StepTolerance=1e-6, MaxIterations=100000);
+            ADMM = struct();
+            ADMM.solver = options_Dctral;
+            ADMM.converged= false;
+            ADMM.max_iter = 500; % Maximumconverged ADMM iterations
+            ADMM.c_penalty = [100,100,15,15];
+            ADMM.lb = [-inf,-inf,-inf,-inf];
+            ADMM.ub = [inf,inf, inf, inf];
+            ADMM.initial_values = repmat([1000, 1000, -14, 14]', 1,network_topo.numNodes);
+            % Prior information 
+            % ADMM.prev_r = cell(1,network_topo.numNodes);
+            % ADMM.prev_v = cell(1,network_topo.numNodes);
+            % ADMM.prev_sigma_r = cell(1,network_topo.numNodes);
+            % ADMM.prev_sigma_v = cell(1,network_topo.numNodes);
+            % ADMM.prev_mean = repmat({[0; 0; 0; 0]}, 1,numNodes);
+            % ADMM.prev_cov = repmat({eye(4)}, 1,numNodes);
+            ADMM.prev_mean = cell(1,network_topo.numNodes);
+            ADMM.prev_cov = cell(1,network_topo.numNodes);
+            %
+            ADMM.Nu = cell(1, network_topo.numNodes);
+            ADMM.Nu_prev = cell(1, network_topo.numNodes);
+            ADMM.update_z = cell(1, network_topo.numNodes);
+            ADMM.update_z_prev = cell(1, network_topo.numNodes);
+            ADMM.primal_residual_all =[];
+            ADMM.primal_residual_by_para = cell(1,network_topo.numNodes);
+            ADMM.dual_residual_all = [];
+            ADMM.dual_residual_by_para = cell(1,network_topo.numNodes);
+            ADMM.all_estimations_every_iter = [];
+            % ADMM.all_estimations_every_iter = cell(NUM_TAR,TRACK_TIME, ADMM.max_iter); % In each cell, there will be a matrix of size (4 x numNodes)
+            ADMM.final_tracking_estimation = cell(1, 5);
+            ADMM.RANGE_Xs = [];
+            ADMM.RANGE_Ys = [];
+            ADMM.DOPPLER_Xs = [];
+            ADMM.DOPPLER_Ys = [];
+            ADMM.converg_r = false;
+            ADMM.converg_d = false;
+            ADMM.tolerance = 1e-3; % Convergence tolerance for primal residual
+            % Define the parameters for adaptive penalty update
+            % Define more conservative parameters for adaptive penalty update
+            ADMM.tau_incr = [2.01, 2.01, 2.1, 2.1];  % Smaller increase factor
+            ADMM.tau_decr = [2.01, 2.01, 2.1, 2.1];  % Smaller decrease factor
+            ADMM.mu = [3,3,10,10];          % Slightly smaller threshold ratio
+            ADMM.alpha = [0.5, 0.5, 0.5, 0.5];  % Damping factor
+            for n = 1:network_topo.numNodes
+                ADMM.Nu{n} = zeros(4, network_topo.numNodes);
+                ADMM.Nu_prev{n} = zeros(4, network_topo.numNodes);
+                ADMM.update_z{n} = zeros(4, network_topo.numNodes);
+                ADMM.update_z_prev{n} = zeros(4, network_topo.numNodes);
+            end
+        end
         function ADMM = ADMM_reset(ADMM,NUM_TAR,network_topo)
             ADMM.converged = false;
             ADMM.Nu = cell(NUM_TAR, network_topo.numNodes);
@@ -647,8 +717,13 @@ classdef ADMM_utils
             ADMM.RANGE_Xs = [];
             ADMM.RANGE_Ys = [];
             ADMM.DOPPLER_Xs = [];
+            ADMM.DOPPLER_Ys = [];
             ADMM.converg_r = false;
             ADMM.converg_d = false;
+            ADMM.c_penalty = [100,100,15,15];
+            ADMM.tau_incr = [2.01, 2.01, 2.1, 2.1];  % Smaller increase factor
+            ADMM.tau_decr = [2.01, 2.01, 2.1, 2.1];  % Smaller decrease factor
+            ADMM.initial_values = cell(NUM_TAR,network_topo.numNodes);
             for n = 1:network_topo.numNodes
                 ADMM.Nu{n} = zeros(4, network_topo.numNodes);
                 ADMM.Nu_prev{n} = zeros(4, network_topo.numNodes);

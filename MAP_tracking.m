@@ -3,23 +3,20 @@ ut = ADMM_utils;
 models_ut = models;
 fig_ut = make_figs(10);
 DEBUG = true;
-PRE_WHITEN = true;
+PRE_WHITEN = false;
 % P0, TODO: We can make the setting into config file, then we can sacve up to 150 lines
 %% P1: Initialize ---
 %-- P1-0: Simulation Scenarios parameters
 num_monte_carlo = 1; % Number of monte carlo runs
 NUM_CPI_PER_MEA = 64;    % Number of measurements per burst
-TRACK_TIME = 4;   % Number of burst times
-time_step = 1e-3;    % Time step between two measurements
-
-% [DELETE AFTER DEBUGGING]
-all_estimation_from_EKFs = cell(TRACK_TIME*NUM_CPI_PER_MEA,10);
-x_pred_from_EKFs = cell(TRACK_TIME*NUM_CPI_PER_MEA,10);
-P_pred_from_EKFs = cell(TRACK_TIME*NUM_CPI_PER_MEA,10);
-z_corr_from_EKFs = cell(TRACK_TIME*NUM_CPI_PER_MEA,10);
-x_corr_from_EKFs = cell(TRACK_TIME*NUM_CPI_PER_MEA,10);
-P_corr_from_EKFs = cell(TRACK_TIME*NUM_CPI_PER_MEA,10);
-% [DELETE AFTER DEBUGGING]ma
+TRACK_TIME = 5;   % Number of burst times
+time_step = 1e-2;    % Time step between two measurements
+Results = struct();
+Results.primal_residauls = cell(1,TRACK_TIME); % In each cell (time stemp), store the primal residuals (cell: 1 x # iteration of opt.) 
+Results.dual_residauls = cell(1,TRACK_TIME);   % In each cell (time stemp), store the dual residuals (cell: 1 x # iteration of opt.)
+Results.estimations = cell(1,TRACK_TIME);      % In each cell (time stemp), store the estimation results (cell: 4 x 10 x # iteration of opt.)
+Results.true_params = cell(1,TRACK_TIME);      % In each cell (time stemp), store the estimation results (cell: 1 x 4)
+Results.estimations_CA = cell(1,TRACK_TIME);   % In each cell (time stemp), store the estimation results from centralized approach (cell: 1 x 4)
 
 %-- P1-1 Target(s) and moving scenario, deterministic part 
 %TODO: Make multiple targets scenario, can make target obj list
@@ -35,7 +32,7 @@ target.target_position = zeros(NUM_TAR,NUM_CPI_PER_MEA*TRACK_TIME, 2);
 for i = 1 : NUM_TAR
     target.target_position(i, 1, :) = target.initial_position; 
 end
-% True target trajectory
+% True tart trajectory
 for i = 1: NUM_TAR
     for t = 2 : NUM_CPI_PER_MEA*TRACK_TIME
         target.target_position(i, t, :) = squeeze(target.target_position(i, t-1, :))' + target.speed * target.direction * time_step;
@@ -67,7 +64,6 @@ end
 target.tartget_state_wrt_node = cell(TRACK_TIME*NUM_CPI_PER_MEA,10);
 for i = 1:10
     for t = 1:TRACK_TIME*NUM_CPI_PER_MEA
-        % target.tartget_state_wrt_node{t,i} = squeeze(target.target_position(1,t,:)) - network_topo.radar_pos(i,:)';
         target.target_state_wrt_node{t,i} =  [target.target_position(1,t,1), target.target_position(1,t,2), target.true_params(3), target.true_params(4)] - [network_topo.radar_pos(i,1), network_topo.radar_pos(i,2),0,0];
     end
 end
@@ -81,16 +77,20 @@ options_Ctral =  optimoptions('fmincon', 'Display', 'off', ScaleProblem=true, Op
 ADMM = struct();
 ADMM.solver = options_Dctral;
 ADMM.converged= false;
-ADMM.max_iter = 1500; % Maximumconverged ADMM iterations
+ADMM.max_iter = 500; % Maximumconverged ADMM iterations
 ADMM.c_penalty = [100,100,15,15];
 ADMM.lb = [-inf,-inf,-inf,-inf];
 ADMM.ub = [inf,inf, inf, inf];
-ADMM.initial_values = repmat([1000, 1000, 20, 20]', 1,network_topo.numNodes);
-%
-ADMM.prev_r = cell(1,network_topo.numNodes);
-ADMM.prev_v = cell(1,network_topo.numNodes);
-ADMM.prev_sigma_r = cell(1,network_topo.numNodes);
-ADMM.prev_sigma_v = cell(1,network_topo.numNodes);
+ADMM.initial_values = repmat([1000, 1000, 10, 10]', 1,network_topo.numNodes);
+% Prior information 
+% ADMM.prev_r = cell(1,network_topo.numNodes);
+% ADMM.prev_v = cell(1,network_topo.numNodes);
+% ADMM.prev_sigma_r = cell(1,network_topo.numNodes);
+% ADMM.prev_sigma_v = cell(1,network_topo.numNodes);
+% ADMM.prev_mean = repmat({[0; 0; 0; 0]}, 1,numNodes);
+% ADMM.prev_cov = repmat({eye(4)}, 1,numNodes);
+ADMM.prev_mean = cell(1,network_topo.numNodes);
+ADMM.prev_cov = cell(1,network_topo.numNodes);
 %
 ADMM.Nu = cell(NUM_TAR, network_topo.numNodes);
 ADMM.Nu_prev = cell(NUM_TAR, network_topo.numNodes);
@@ -139,7 +139,7 @@ env.range_var = (3 * env.c^2) / (8 * pi^2 * env.B(1)^2 * env.SNR_lin) ;
 env.doppler_var = (3 * ((env.fs(1))^2)) / (pi^2 * env.SNR_lin * NUM_CPI_PER_MEA^3) ;
 env.range_sd = sqrt(env.range_var);
 env.doppler_sd = sqrt(env.doppler_var);
-env.rho = 0.0;  
+env.rho = 0;  
 
 env.Sigma = [env.range_var, env.rho * env.range_sd * env.doppler_sd; ...
               env.rho * env.range_sd * env.doppler_sd, env.doppler_var];   
@@ -147,25 +147,31 @@ env.Sigma = [env.range_var, env.rho * env.range_sd * env.doppler_sd; ...
 if PRE_WHITEN
     env.pre_whit_L = inv(chol(env.Sigma));
     env.Sigma_filter = eye(2);
+    env.PRE_WHITEN = true;
 else
     env.pre_whit_L = eye(2);
     env.Sigma_filter = env.Sigma;
+    env.PRE_WHITEN = false;
 end     
 
+% Give Prior distribution 
+prior_mu = cell(1, network_topo.numNodes);
+prior_sigma = cell(1, network_topo.numNodes);
+prior_mu = repmat({[1000; 1000; -14; 14]}, 1,network_topo.numNodes);
+state_cov = [env.range_var,0,0,0; ...
+             0,env.range_var,0,0;...
+             0,0,env.doppler_var,0;...
+             0,0,0,env.doppler_var];
+if PRE_WHITEN
+    prior_sigma = repmat({eye(4)}, 1, network_topo.numNodes);
 
-%-- [No need EKF here] EKF setup for each node
-
-%-- P1-5 Save the experiment parameters log in json file
-experiment_params_log = struct();
-experiment_params_log.network_topo = network_topo;
-experiment_params_log.NUM_CPI_PER_MEA = NUM_CPI_PER_MEA;
-experiment_params_log.TRACK_TIME = TRACK_TIME;
-experiment_params_log.time_step = time_step;
-experiment_params_log.num_monte_carlo = num_monte_carlo;
-if DEBUG==false
-    ut.write_exp_log('./data_log', 'exp_config',experiment_params_log);
+else
+    prior_sigma = repmat({state_cov}, 1,network_topo.numNodes);
 end
 
+
+
+%-- [No need EKF here] EKF setup for each node, we would only use the MAP estimation for each time step.
 
 %% P2: Synthetic data generation
 for mc = 1:num_monte_carlo
@@ -200,54 +206,33 @@ for mc = 1:num_monte_carlo
         numNodes_cell_buffer = cell(NUM_TAR, network_topo.numNodes);
         radar_positions_cell_buffer = cell(NUM_TAR, network_topo.numNodes);
 
+        prior_mu_cell = cell(1,network_topo.numNodes);
+        prior_sigma_cell = cell(1,network_topo.numNodes);
         % Pharse_measurements
         [range_with_error_withNeighbors,doppler_with_error_withNeighbors,...
-        numNodes_withNeighbors,radar_positions_withNeighbors] = ut.pharse_measurements_tracking(network_topo.laplacian_matrix, ...
-        range_with_error, doppler_with_error, range_with_error_withNeighbors, doppler_with_error_withNeighbors, NUM_TAR,network_topo);
+        numNodes_withNeighbors,radar_positions_withNeighbors,...
+        prior_mu_cell,prior_sigma_cell] = ut.pharse_measurements_tracking(network_topo.laplacian_matrix, ...
+        range_with_error, doppler_with_error, range_with_error_withNeighbors, doppler_with_error_withNeighbors, NUM_TAR,network_topo, ...
+        prior_mu,prior_sigma);
         %% P3: Decentralized optimization for tracking
         % Create a cell array to hold the neighbors of each node
         neighbors = ut.get_neighbors(network_topo.adj_matrix, network_topo.numNodes);
         for tar = 1: NUM_TAR
             for k = 1: TRACK_TIME
-                t=0;
                 % Measurement chunk
                 for i = 1: network_topo.numNodes
                     range_with_error_cell_window{i} = range_with_error_withNeighbors{tar,i}((k-1)*NUM_CPI_PER_MEA + 1 : k*NUM_CPI_PER_MEA,:);
                     doppler_with_error_cell_window{i}  = doppler_with_error_withNeighbors{tar,i}((k-1)*NUM_CPI_PER_MEA + 1 : k*NUM_CPI_PER_MEA,:);
                 end
-                %-- P3-1: Local filtering (EKF), loop over time and each node 
+                fprintf("Pharse index: %d to %d\n", (k-1)*NUM_CPI_PER_MEA + 1, k*NUM_CPI_PER_MEA);
+
+                %-- P3-1: Initialize ADMM variables from previous time step
                 if k ~= 1
                     ADMM.initial_values = repmat(ADMM.final_tracking_estimation{tar, k-1}, 1,network_topo.numNodes); % Can initalize as local values?
                     % ADMM.initial_values = repmat([1000,1000,20,20]', 1,network_topo.numNodes);
-                    for iter = 1: network_topo.numNodes
-                        current_neighbors = find(network_topo.laplacian_matrix(n, :) ~= 0);
-                        it = 0;
-                        r_neigbors = zeros(1, length(current_neighbors));
-                        v_neigbors = zeros(1, length(current_neighbors));
-                        sigma_r_neigbors = zeros(1, length(current_neighbors));
-                        sigma_v_neigbors = zeros(1, length(current_neighbors));
-                        for j = current_neighbors
-                            it = k+1;
-                            % r_neigbors(:,it) = norm(ADMM.initial_values(1:2, j),2);
-                            % v_neigbors(:,it) = norm(ADMM.initial_values(3:4, j),2);
-                            % sigma_r_neigbors(:,:,it) = EKF.filter{j}.StateCovariance(1:2,1:2);
-                            % sigma_v_neigbors(:,:,it) = EKF.filter{j}.StateCovariance(3:4,3:4);
-                            % r_neigbors = mean(range_with_error_cell_window{j});  % local -> global and mean 
-                            % v_neigbors = mean(doppler_with_error_cell_window{j});
-                            % r_neigbors = norm(ADMM.initial_values(1:2, j),2);
-                            % v_neigbors = norm(ADMM.initial_values(1:2, j),2);
-                            % sigma_r_neigbors = var(range_with_error_cell_window{j});
-                            % sigma_v_neigbors = var(doppler_with_error_cell_window{j});
-                            r_neigbors(:,it) = 1000;
-                            v_neigbors(:,it) = 20;
-                            sigma_r_neigbors = [1, 1, 1];
-                            sigma_v_neigbors = [1, 1, 1];
-                        end
-                        ADMM.prev_r{iter} = r_neigbors;
-                        ADMM.prev_v{iter} = v_neigbors;
-                        ADMM.prev_sigma_r{iter} = sigma_r_neigbors;
-                        ADMM.prev_sigma_v{iter} = sigma_v_neigbors;                    
-                    end
+                    %-- Update the prior from previous time step
+                    % estimated_params = [target.target_position(1,(k-1)*NUM_CPI_PER_MEA,1);target.target_position(1,(k-1)*NUM_CPI_PER_MEA,2);-14;14];
+                    % [ADMM.prior_mean, ADMM.prior_cov] = ut.get_neighbors_cell(network_topo.laplacian_matrix,NUM_TAR, network_topo.numNodes,estimated_params,state_cov);
                 end 
                 % %-- P3-2: Distributed consensus optimization (ADMM)
                 iteration = 0;
@@ -265,17 +250,28 @@ for mc = 1:num_monte_carlo
                         %                                      env.Sigma, n, neighbors, ADMM.Nu, ADMM.initial_values,...
                         %                                       ADMM.update_z_prev, ADMM.c_penalty);
                         % estimated_params = fmincon(fun, ADMM.initial_values(:,n),[],[],[],[], ADMM.lb, ADMM.ub, [],ADMM.solver);
+
+                        %-- For the first iteration, use log-likelihood, then use posterior (previous estimate as prior)
                         if k == 1
                             fun = @(params) ut.logLikelihoodWithConsensus(params, range_with_error_cell_window{n},doppler_with_error_cell_window{n},...
                                                              radar_positions_withNeighbors{n},numNodes_withNeighbors{n}, NUM_CPI_PER_MEA, env.lambda,...
                                                              env.Sigma, n, neighbors, ADMM.Nu, ADMM.initial_values,...
                                                               ADMM.update_z_prev, ADMM.c_penalty);
                         else
-                            fun = @(params) ut.posteriorWithConsensus(params, range_with_error_cell_window{n},doppler_with_error_cell_window{n},...
-                                                             ADMM.prev_r{n}, ADMM.prev_v{n}, ADMM.prev_sigma_r{n}, ADMM.prev_sigma_v{n},...
+                            % fun = @(params) ut.posteriorWithConsensus(params, range_with_error_cell_window{n},doppler_with_error_cell_window{n},...
+                            %                                  ADMM.prev_r{n}, ADMM.prev_v{n}, ADMM.prev_sigma_r{n}, ADMM.prev_sigma_v{n},...
+                            %                                  radar_positions_withNeighbors{n},numNodes_withNeighbors{n}, NUM_CPI_PER_MEA, env.lambda,...
+                            %                                  env.Sigma, n, neighbors, ADMM.Nu, ADMM.initial_values,...
+                            %                                  ADMM.update_z_prev, ADMM.c_penalty);
+                            % fun = @(params) ut.posteriorWithConsensus(params, range_with_error_cell_window{n},doppler_with_error_cell_window{n},...
+                            %                                  ADMM.prior_mean{n}, ADMM.prior_cov{n},...
+                            %                                  radar_positions_withNeighbors{n},numNodes_withNeighbors{n}, NUM_CPI_PER_MEA, env.lambda,...
+                            %                                  env.Sigma, n, neighbors, ADMM.Nu, ADMM.initial_values,...
+                            %                                  ADMM.update_z_prev, ADMM.c_penalty);
+                            un = @(params) ut.logLikelihoodWithConsensus(params, range_with_error_cell_window{n},doppler_with_error_cell_window{n},...
                                                              radar_positions_withNeighbors{n},numNodes_withNeighbors{n}, NUM_CPI_PER_MEA, env.lambda,...
                                                              env.Sigma, n, neighbors, ADMM.Nu, ADMM.initial_values,...
-                                                             ADMM.update_z_prev, ADMM.c_penalty);
+                                                              ADMM.update_z_prev, ADMM.c_penalty);
                         end
 
                         % save("variable.mat","range_with_error_cell_window","doppler_with_error_cell_window",...
@@ -285,7 +281,9 @@ for mc = 1:num_monte_carlo
                         all_estimations(:,n) = estimated_params;
                     end
                     ADMM.all_estimations_every_iter(:,:,iteration) = all_estimations;
-
+                    if k ~=1
+                        disp("stop here")
+                    end
                     for n = 1: network_topo.numNodes
                         for j = neighbors{n}
                             % Update z
@@ -300,6 +298,9 @@ for mc = 1:num_monte_carlo
                     dual_residual_params   = zeros(4, 1);
                     prima_residual_by_node = zeros(4,network_topo.numNodes);
                     dual_residual_by_node  = zeros(4,network_topo.numNodes);
+                    if k ~= 1
+                        disp("Stop here to debug.")
+                    end
                     for n  = 1:network_topo.numNodes
                         for j = neighbors{n}
                             primal_residual = primal_residual + norm(all_estimations(:,n) - ADMM.update_z{n}(:,j))^2;
@@ -316,15 +317,20 @@ for mc = 1:num_monte_carlo
                     ADMM.dual_residual_by_para{iteration}   = dual_residual_by_node; 
 
                     % Stop criteria
-                    if primal_residual < 10* dual_residual
-                        ADMM.c_penalty = ADMM.tau_incr .* ADMM.c_penalty;
-                    elseif dual_residual < 10*primal_residual
-                        ADMM.c_penalty = ADMM.c_penalty .* ((ADMM.tau_decr).^(-1));
+                    % -- Every 30 iterations, Update the penalty parameter based on the residuals
+                    if mod(iteration,30) ==0
+                        if primal_residual <  dual_residual
+                            ADMM.c_penalty = ADMM.tau_incr .* ADMM.c_penalty;
+                        elseif dual_residual < primal_residual
+                            ADMM.c_penalty = ADMM.c_penalty .* ((ADMM.tau_decr).^(-1));
+                        end
                     end
                     
                     ADMM.initial_values = all_estimations;
                     ADMM.update_z_prev = ADMM.update_z;
                     ADMM.Nu_prev = ADMM.Nu;
+                    % algor. 2, by checking the primal residual of range and primal residual of doppler
+                    %TODO: make some parameters to global variable and call the ADMM_utils ADMM_stop_criterion function
                     if norm(ADMM.primal_residual_by_para{iteration}(1:2)) < ADMM.tolerance
                         ADMM.converg_r = true;
                         % Set the store range value of primal residual
@@ -376,16 +382,19 @@ for mc = 1:num_monte_carlo
                     if (ADMM.converg_r && ADMM.converg_d) || (iteration == ADMM.max_iter)
                         ADMM.converged = true;
                     end        
-
+                    disp("Debug: after"+estimated_params);
                 end %TODO: Remenber to reset ADMM.iteration = 0; ADMM.converged = false ; after each time step, can write a re-set function in trackingEKF class
                 ADMM.final_tracking_estimation{tar, k} = estimated_params;% Also de-whiten
                 ADMM = ut.ADMM_reset(ADMM,NUM_TAR,network_topo);
+                % ADMM = ut.Initialized_ADMM(network_topo);
+                Results.primal_residauls{k} = ADMM.primal_residual_all;
+                Results.dual_residauls{k} = ADMM.dual_residual_all;
+                Results.estimations{k} = ADMM.all_estimations_every_iter;
+                Results.true_params{k} = target.true_params;
                 clear all_estimations;
-
+                
                 % end %TODO: Remenber to reset ADMM.iteration = 0; ADMM.converged = false ; after each time step, can write a re-set function in trackingEKF class
                 % Plot EKF estimation result for each node one plot for each parameter
-
-
                 fprintf('Time step %d completed.\n', k);
 
                 % [Deleted after debugging]
@@ -397,5 +406,19 @@ for mc = 1:num_monte_carlo
         fig_ut.plot_trajectory(target.target_position,ADMM.final_tracking_estimation);
     end
     % Save the resulted estimation log in json file each monte carlo run
+    %-- P1-5 Save the experiment parameters log in json file
+    experiment_params_log = struct();
+    experiment_params_log.network_topo = network_topo;
+    experiment_params_log.NUM_CPI_PER_MEA = NUM_CPI_PER_MEA;
+    experiment_params_log.TRACK_TIME = TRACK_TIME;
+    experiment_params_log.time_step = time_step;
+    experiment_params_log.num_monte_carlo = num_monte_carlo;
+    experiment_params_log.env = env;
+    experiment_params_log.ADMM = ADMM;
+    experiment_params_log.target = target;
+    experiment_params_log.results = Results;
+    if DEBUG==false
+        ut.write_exp_log('./data_log', 'exp_config',experiment_params_log);
+    end
 end
 
