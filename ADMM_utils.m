@@ -428,13 +428,11 @@ classdef ADMM_utils
             doppler_true = zeros(size(d_true));
             measurements_true = zeros(size(mea_true));
             
-
             % Radar_pos [# node, 2 (x,y)] (1) reshape from expand to 4 [num target(1), time(1), num node, 2]
             % (2) repmat to [num target (remate here), time(remat here), num node, 2]
-            radar_pos_expand =  repmat(reshape(target.target_position,[num_target,size(network_topo.radar_pos,1),1,size(network_topo.radar_pos,2)]),[1,num_target,M,1]);
-
+            radar_pos_expand =  repmat(reshape(network_topo.radar_pos,[1,size(network_topo.radar_pos,1),1,size(network_topo.radar_pos,2)]),[num_target,1,M,1]);
             % target_pos [Num of target, time duration, 2] (1) reshape to [num target,1, time, num node (1),2]
-            % (2) repmat to [num target, time, num doe (remat here), 2]
+            % (2) repmat to [num target, time (remat here), num doe (remat), 2]
             target_pos_expand = repmat(reshape(target.target_position,[num_target,1,size(target.target_position,2),size(target.target_position,3)]),[1,network_topo.numNodes,1,1]);
             relative_position = radar_pos_expand - target_pos_expand; % [num_target x numNodes x M x 2]
             %TODO: Keep work on this!
