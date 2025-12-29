@@ -178,8 +178,8 @@ classdef ADMM_utils
                 x_j = radar_positions(j, 1);
                 y_j = radar_positions(j, 2);
                 % Theis should be chnage 
-                mu_rj      =  mu_r(j);
-                mu_fdj     =  mu_d(j);
+                mu_rj     =  mu_r(j);
+                mu_fdj    =  mu_d(j);
                 sigma_fd2 = sigma_r(j);
                 sigma_r2  = sigma_d(j);
                 %%%%%%%%%%%%%%%%%%%%%%
@@ -418,7 +418,7 @@ classdef ADMM_utils
         function [range_true, doppler_true, measurements_true] = gt_data_generation_tracking(r_true, d_true, mea_true, target, network_topo, env, M, num_target)
             % Matrices for range and Doppler true data (This is a matrix of M x N) 
             % Range Measurement are stored in "relation position" way. 
-            % Output:
+            % Output: M is the time duration 
             % r_true : [num_target x numNodes x M]
             % d_true : [num_target x numNodes x M]
             % mea_true : [num_target x numNodes x 2M]
@@ -434,13 +434,11 @@ classdef ADMM_utils
             % target_pos [Num of target, time duration, 2] (1) reshape to [num target,1, time, num node (1),2]
             % (2) repmat to [num target, time (remat here), num doe (remat), 2]
             target_pos_expand = repmat(reshape(target.target_position,[num_target,1,size(target.target_position,2),size(target.target_position,3)]),[1,network_topo.numNodes,1,1]);
-            relative_position = radar_pos_expand - target_pos_expand; % [num_target x numNodes x M x 2]
-            %TODO: Keep work on this!
+            relative_position = -(radar_pos_expand - target_pos_expand); % [num_target x numNodes x M x 2]
             range_true = vecnorm(relative_position,2,4); % [num_target x numNodes x M]
             doppler_true = reshape(reshape(relative_position,[],2)*[target.speed * target.direction]',[num_target,network_topo.numNodes,M])./(range_true.* env.lambda);
             measurements_true(:,:, 1:2:end) = range_true; % Odd index for range
             measurements_true(:,:, 2:2:end) = doppler_true; % Even index for Doppler
-
         end
         function [range_with_error, doppler_with_error, measurements_all_with_error] = add_measurement_noise(range_true, doppler_true, M, NUM_TAR,numNodes, env)
             % Kron function is too expensive when total_measurements is large
@@ -596,6 +594,14 @@ classdef ADMM_utils
                         % mu_r_cell{n} = mu_d_neighbor;
                         % sigma_r_cell{n} = sigma_r_neighbor;
                         % sigma_d_cell{n} = sigma_d_neighbor; 
+
+
+                        % TODO: Now in a cell, the order we place the measurements
+                        % in the order of index of neighbors.
+                        % For example, if node 1 has neighbors 2 and 10, then in
+                        % the cell for node 1, the first column corresponds ton node1, second column to node 2 and the third column to node 10. 
+                        % Another example, if node 2 has neighbors 1, 3, then in the cell for node 2, t
+                        % the first column corresponds to node 1, second column to node 2 and the third column to node 3.
                     end
                 end
             end
@@ -611,8 +617,29 @@ classdef ADMM_utils
                     for j = current_neighbors
                         k = k+1;
                         % Get prior parameters from neighbors
-                        mu_state_neighbor{k} = estimated_params;
-                        sigma_state_neighbor{k} = state_cov;
+                        if size(estimated_params,2) == 1 % Check number of estimator params
+                            mu_state_neighbor{k} = estimated_params;
+                            % sigma_state_neighbor{k} = state_cov;
+
+                        elseif size(estimated_params,2) == numNodes
+                            mu_state_neighbor{k} = estimated_params(:,j);
+                            % sigma_state_neighbor{k} = state_cov{j};
+
+                        else
+                            error('Size of estimated_params is not correct');
+                        end
+
+                        if size(state_cov,2) ==  4 % Check number of estimator params
+                            % mu_state_neighbor{k} = estimated_params;
+                            sigma_state_neighbor{k} = state_cov;
+
+                        elseif size(state_cov,2) == numNodes
+                            % mu_state_neighbor{k} = estimated_params(:,j);
+                            sigma_state_neighbor{k} = state_cov{j};
+
+                        else
+                            error('Size of estimated_params is not correct');
+                        end
 
                         prior_mean{n} = mu_state_neighbor;
                         prior_cov{n} = sigma_state_neighbor;
@@ -621,6 +648,7 @@ classdef ADMM_utils
                 end
             end
         end
+
 
         function write_exp_log(write_folder_path, folder_name, data_config)
             %{ 
@@ -721,7 +749,7 @@ classdef ADMM_utils
             ADMM.c_penalty = [100,100,15,15];
             ADMM.tau_incr = [2.01, 2.01, 2.1, 2.1];  % Smaller increase factor
             ADMM.tau_decr = [2.01, 2.01, 2.1, 2.1];  % Smaller decrease factor
-            ADMM.initial_values = cell(NUM_TAR,network_topo.numNodes);
+            % ADMM.initial_values = cell(NUM_TAR,network_topo.numNodes);
             for n = 1:network_topo.numNodes
                 ADMM.Nu{n} = zeros(4, network_topo.numNodes);
                 ADMM.Nu_prev{n} = zeros(4, network_topo.numNodes);

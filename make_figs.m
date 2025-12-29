@@ -422,15 +422,15 @@ classdef make_figs
             set(gcf,'Color','white');
             set(gca,'FontSize',24);
             hold on;
-            plot(true_trajectory(1, :, 1), true_trajectory(1, :, 2), '.', 'LineWidth', 1.5, 'DisplayName', 'True Trajectory');
-            plot(estimated_trajectory(1,:), estimated_trajectory(2,:), '-ob', 'LineWidth', 1.5, 'DisplayName', 'Estimated Trajectory');
+            % plot(true_trajectory(1, :, 1), true_trajectory(1, :, 2), '--r', 'LineWidth', 1, 'DisplayName', 'True Trajectory');
+            plot(true_trajectory(1, 1:size(true_trajectory,2)-64, 1),true_trajectory(1, 1:size(true_trajectory,2)-64, 2), '--r', 'LineWidth', 1, 'DisplayName', 'Ground truch location');
+            plot(estimated_trajectory(1,:), estimated_trajectory(2,:), '--ob', 'LineWidth', 1.5, 'DisplayName', 'Estimated Trajectory');
             hold off;
             xlabel('Position x (m)');
             ylabel('Position y (m)');
             title('Target Trajectory');
             legend('Location', 'northeastoutside');
         end
-
         function plot_geometry_and_target(obj, network_topo, target_position)
             figure;
             set(gcf,'Color','white');

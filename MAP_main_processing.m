@@ -4,8 +4,6 @@ DEBUG=true; % To see verbose
 TYPE="MAP";
 PRE_WHITEN=false;
 %TODO: 
-% 1. Write a text file to export conm6fig. / parameters setup of the run
-% 2. Make the algorithm to be parallel computing?
 %-- Config. of the run
 num_monte_carol = 1;
 direction_mc = zeros(num_monte_carol,2);
