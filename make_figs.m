@@ -423,7 +423,7 @@ classdef make_figs
             set(gca,'FontSize',24);
             hold on;
             % plot(true_trajectory(1, :, 1), true_trajectory(1, :, 2), '--r', 'LineWidth', 1, 'DisplayName', 'True Trajectory');
-            plot(true_trajectory(1, 1:size(true_trajectory,2)-64, 1),true_trajectory(1, 1:size(true_trajectory,2)-64, 2), '--r', 'LineWidth', 1, 'DisplayName', 'Ground truch location');
+            plot(true_trajectory(1, 1:size(true_trajectory,2)-64, 1),true_trajectory(1, 1:size(true_trajectory,2)-64, 2), '-r', 'LineWidth', 1, 'DisplayName', 'Ground truch location');
             plot(estimated_trajectory(1,:), estimated_trajectory(2,:), '--ob', 'LineWidth', 1.5, 'DisplayName', 'Estimated Trajectory');
             hold off;
             xlabel('Position x (m)');

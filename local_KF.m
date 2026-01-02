@@ -190,8 +190,8 @@ EKF.system_noise = 1e-2 * [EKF.delta_k^4/4, 0, EKF.delta_k^3/2, 0;
 %                           0, EKF.delta_k^3/2, 0, EKF.delta_k^2]; % System noise covariance
 % EKF.system_noise = diag([env.Sigma(1,1), env.Sigma(1,1), env.Sigma(2,2), env.Sigma(2,2)]); 
 % EKF.StateCovariance = diag([env.Sigma(1,1), env.Sigma(1,1), env.Sigma(2,2), env.Sigma(2,2)]); % Initial state covariance                     
-% EKF.StateCovariance = EKF.system_noise; % Initial state covariance
-EKF.StateCovariance = diag([1e3, 1e3, 1e3, 1e3]); % Initial state covariance
+EKF.StateCovariance = EKF.system_noise; % Initial state covariance
+% EKF.StateCovariance = diag([1e3, 1e3, 1e3, 1e3]); % Initial state covariance
 % EKF.StateCovariance = ones(4,4);
 EKF.initial_tar_guess = [1000,1000,-14.1412,14.1412];
 
@@ -279,7 +279,7 @@ for mc = 1:num_monte_carlo
                         %--
                         [xpred, Ppred] = predict(EKF.filter{i}, env.time_step);
                         correct(EKF.filter{i}, env.pre_whit_L*[current_range_meas(instance), current_doppler_meas(instance)]', i ,network_topo, env);
-                        % all_estimation_from_EKFs{(k-1)*NUM_CPI_PER_MEA+instance, i} = EKF.filter{i}.State; % TO DLELETE AFTER DEBUGGING
+                        all_estimation_from_EKFs{(k-1)*NUM_CPI_PER_MEA+instance, i} = EKF.filter{i}.State; % TO DLELETE AFTER DEBUGGING
                         x_pred_from_EKFs{(k-1)*NUM_CPI_PER_MEA+instance, i} = xpred; % TO DLELETE AFTER DEBUGGING
                         P_pred_from_EKFs{(k-1)*NUM_CPI_PER_MEA+instance, i} = Ppred; % TO DLELETE AFTER DEBUGGING
                     end
@@ -287,9 +287,9 @@ for mc = 1:num_monte_carlo
                     %-- Update EKF with each measurement in one row (update KF per burst)
                     % [xpred, Ppred] = predict(EKF.filter{i}, NUM_CPI_PER_MEA*env.time_step);
                     % correct(EKF.filter{i}, [current_range_meas(end), current_doppler_meas(end)], i ,network_topo,env);
-                    all_estimation_from_EKFs{k, i} = EKF.filter{i}.State; % TO DLELETE AFTER DEBUGGING
-                    x_pred_from_EKFs{k, i} = xpred; % TO DLELETE AFTER DEBUGGING
-                    P_pred_from_EKFs{k, i} = Ppred; % TO DLELETE AFTER DEBUGGING
+                    % all_estimation_from_EKFs{t, i} = EKF.filter{i}.State; % TO DLELETE AFTER DEBUGGING
+                    % x_pred_from_EKFs{k, i} = xpred; % TO DLELETE AFTER DEBUGGING
+                    % P_pred_from_EKFs{k, i} = Ppred; % TO DLELETE AFTER DEBUGGING
                     % Perform EKF prediction and update
                     % predict(EKF.filter{i}KF,E.delta_k);
                     % % [EKF.filter{i}.State, EKF.filter{i}.StateCovariance] = correct(EKF.filter{i}, current_measurements(:, i), i ,network_topo,env);

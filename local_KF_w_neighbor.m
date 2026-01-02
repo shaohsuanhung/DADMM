@@ -192,7 +192,7 @@ EKF.system_noise = 1e-2 * [EKF.delta_k^4/4, 0, EKF.delta_k^3/2, 0;
 % EKF.StateCovariance = diag([env.Sigma(1,1), env.Sigma(1,1), env.Sigma(2,2), env.Sigma(2,2)]); % Initial state covariance                     
 % EKF.StateCovariance = EKF.system_noise; % Initial state covariance
 EKF.StateCovariance = diag([1e3, 1e3, 1e3, 1e3]); % Initial state covariance
-% EKF.StateCovariance = ones(4,4);
+% EKF.StateCovariance = eye(4,4);
 EKF.initial_tar_guess = [1000,1000,-14.1412,14.1412];
 
 % Global info. 
@@ -273,63 +273,38 @@ for mc = 1:num_monte_carlo
                     doppler_with_error_cell_window{n}  = doppler_with_error_withNeighbors{tar,n}((k-1)*NUM_CPI_PER_MEA + 1 : k*NUM_CPI_PER_MEA,:);
                 end
 
-                %% TOCORRECT at Dec. 31, correct the node looop and CPI loop
-                for i = 1: network_topo.numNodes
-                    current_range_meas = squeeze(range_with_error(tar, i, (k-1)*NUM_CPI_PER_MEA + 1 : k*NUM_CPI_PER_MEA));
-                    current_doppler_meas = squeeze(doppler_with_error(tar, i, (k-1)*NUM_CPI_PER_MEA + 1 : k*NUM_CPI_PER_MEA));
-                    for instance = 1:NUM_CPI_PER_MEA
-                        % Update EKF with each measurement in the burst (update per CPI)
-                        t = (k-1)*NUM_CPI_PER_MEA+instance; % Each time step index
-                        disp("Time step: "+t+", Node: "+i);
-
-                        % ---- 1) predict all nodes (global) ----
-                        x_pred_nodes = cell(1, network_topo.numNodes);
-                        P_pred_nodes = cell(1, network_topo.numNodes);
-
-                        for n = 1:network_topo.numNodes
-                            [x_pred_nodes{n}, P_pred_nodes{n}] = dkf_predict_cv(x_dkf{n}, P_dkf{n}, env.time_step, EKF.system_noise);
-                        end
-
-                        % ---- 2) correct each node using neighbor measurements (LKF-II) ----
-                        for n = 1:network_topo.numNodes
-                            idx_set = [n; neighbors{n}(:)];  % (N_n ∪ {n})
-
-                            % Build y_bar = [y_n; y_neighbor1; ...] with GLOBAL measurement (range,doppler)
-                            y_bar = zeros(2*numel(idx_set), 1);
-                            for a = 1:numel(idx_set)
-                                j = idx_set(a);
-                                % y_bar(2*a-1) = range_with_error(tar, j, t);
-                                y_bar(2*a-1) = range_with_error_cell_window{n}(instance, a);
-                                y_bar(2*a)   = doppler_with_error_cell_window{n}(instance,a);
-                                % y_bar(2*a)   = doppler_with_error(tar, j, t);
-                            end
-
-                            % If you ever turn PRE_WHITEN on:
-                            %   - either whiten y_bar here AND ensure MeasureModel returns whitened too
-                            %   - or keep both unwhitened
-                            % For now PRE_WHITEN=false => do nothing.
-
-                            [x_dkf{n}, P_dkf{n}] = dkf_neighbor_update( ...
-                                x_pred_nodes{n}, P_pred_nodes{n}, y_bar, idx_set, network_topo, env, models_ut);
-
-                            x_pred_from_EKFs{(k-1)*NUM_CPI_PER_MEA+instance, i} = x_pred_nodes{n}; % TO DLELETE AFTER DEBUGGING
-                            P_pred_from_EKFs{(k-1)*NUM_CPI_PER_MEA+instance, i} = P_pred_nodes{n}; % TO DLELETE AFTER DEBUGGING
-                            all_estimation_from_EKFs{(k-1)*NUM_CPI_PER_MEA+instance, i} = x_dkf{i}; % TO DLELETE AFTER DEBUGGING
-                        end
-                        
+                %% TOCORRECT
+                for instance = 1:NUM_CPI_PER_MEA
+                    % Update EKF with each measurement in the burst (update per CPI)
+                    t = (k-1)*NUM_CPI_PER_MEA+instance; % Each time step index
+                    disp("Time step: "+t+", Node: "+i);
+                    % ---- 1) predict all nodes (global) ----
+                    x_pred_nodes = cell(1, network_topo.numNodes);
+                    P_pred_nodes = cell(1, network_topo.numNodes);
+                    for n = 1:network_topo.numNodes
+                        [x_pred_nodes{n}, P_pred_nodes{n}] = dkf_predict_cv(x_dkf{n}, P_dkf{n}, env.time_step, EKF.system_noise);
                     end
-                    state_cov_nodes{i} = EKF.filter{i}.StateCovariance;
-                    %-- Update EKF with each measurement in one row (update KF per burst)
-                    % [xpred, Ppred] = predict(EKF.filter{i}, NUM_CPI_PER_MEA*env.time_step);
-                    % correct(EKF.filter{i}, [current_range_meas(end), current_doppler_meas(end)], i ,network_topo,env);
-                    % all_estimation_from_EKFs{k, i} = EKF.filter{i}.State; % TO DLELETE AFTER DEBUGGING
-                    % x_pred_from_EKFs{k, i} = x_pred_nodes{n}; % TO DLELETE AFTER DEBUGGING
-                    % P_pred_from_EKFs{k, i} = P_pred_nodes{n}; % TO DLELETE AFTER DEBUGGING
-                    % Perform EKF prediction and update
-                    % predict(EKF.filter{i}KF,E.delta_k);
-                    % % [EKF.filter{i}.State, EKF.filter{i}.StateCovariance] = correct(EKF.filter{i}, current_measurements(:, i), i ,network_topo,env);
-                    % correct(EKF.filter{i}, current_measurements(:, i), i ,network_topo,env);
-                    % Store the EKF estimate as the initial value for ADMM
+                    % ---- 2) correct each node using neighbor measurements (LKF-II) ----
+                    for n = 1:network_topo.numNodes
+                        idx_set = [n; neighbors{n}(:)];  % (N_n ∪ {n})
+                        % Build y_bar = [y_n; y_neighbor1; ...] with GLOBAL measurement (range,doppler)
+                        y_bar = zeros(2*numel(idx_set), 1);
+                        for a = 1:numel(idx_set)
+                            j = idx_set(a);                           
+                            y_bar(2*a-1) = range_with_error_cell_window{n}(instance, a);
+                            y_bar(2*a)   = doppler_with_error_cell_window{n}(instance,a);
+                        end
+                        % If you ever turn PRE_WHITEN on:
+                        %   - either whiten y_bar here AND ensure MeasureModel returns whitened too
+                        %   - or keep both unwhitened
+                        % For now PRE_WHITEN=false => do nothing.
+                        [x_dkf{n}, P_dkf{n}] = dkf_neighbor_update( ...
+                            x_pred_nodes{n}, P_pred_nodes{n}, y_bar, idx_set, network_topo, env, models_ut);
+                        x_pred_from_EKFs{t, n} = x_pred_nodes{n}; % TO DLELETE AFTER DEBUGGING
+                        P_pred_from_EKFs{t, n} = P_pred_nodes{n}; % TO DLELETE AFTER DEBUGGING
+                        all_estimation_from_EKFs{t, n} = x_dkf{n}; % TO DLELETE AFTER DEBUGGING
+                    end
+                    
                 end
                 %% Consensus Algorithm 
                 global_state = models_ut.local2global(network_topo.radar_pos,ADMM.initial_values');
@@ -481,9 +456,9 @@ function [x_post, P_post, dbg] = dkf_neighbor_update( ...
 
         yj = y_bar((a-1)*m_per_node+1 : a*m_per_node);
 
-        % Nonlinear measurement and Jacobian wrt GLOBAL state:
-        hj = models_ut.MeasureModel(x_pred, j, network_topo, env);            % (2x1)
-        Hj = models_ut.MeasureModelJacobian(x_pred, j, network_topo, env);    % (2x4)
+        % Nonlinear measurement and Jacobian wrt GLOBAL state: (Change to local)
+        hj = models_ut.LocalMeasureModel(x_pred, j, network_topo, env);            % (2x1)
+        Hj = models_ut.LocalMeasureModelJacobian(x_pred, j, network_topo, env);    % (2x4)
 
         % innovation
         innov = yj - hj;
