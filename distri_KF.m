@@ -179,15 +179,15 @@ EKF.LocalMeasureModelJacobian = @(state) (models_ut.LocalMeasureModelJacobian_re
 EKF.MeasureModel = @(state, idx, network_topo, env) (models_ut.MeasureModel(state, idx, network_topo, env));
 EKF.MeasureModelJacobian = @(state, idx, network_topo, env) (models_ut.MeasureModelJacobian(state, idx, network_topo, env));
 
-% EKF.system_noise = 1e-2 * [EKF.delta_k^4/4, 0, EKF.delta_k^3/2, 0; 
-%                           0, EKF.delta_k^4/4, 0, EKF.delta_k^3/2; 
-%                           EKF.delta_k^3/2, 0, EKF.delta_k^2, 0; 
-%                           0, EKF.delta_k^3/2, 0, EKF.delta_k^2]; % System noise covariance
-
-EKF.system_noise = 0 * [EKF.delta_k^4/4, 0, EKF.delta_k^3/2, 0; 
+EKF.system_noise = 1e-2 * [EKF.delta_k^4/4, 0, EKF.delta_k^3/2, 0; 
                           0, EKF.delta_k^4/4, 0, EKF.delta_k^3/2; 
                           EKF.delta_k^3/2, 0, EKF.delta_k^2, 0; 
                           0, EKF.delta_k^3/2, 0, EKF.delta_k^2]; % System noise covariance
+
+% EKF.system_noise = 0 * [EKF.delta_k^4/4, 0, EKF.delta_k^3/2, 0; 
+%                           0, EKF.delta_k^4/4, 0, EKF.delta_k^3/2; 
+%                           EKF.delta_k^3/2, 0, EKF.delta_k^2, 0; 
+%                           0, EKF.delta_k^3/2, 0, EKF.delta_k^2]; % System noise covariance
 % EKF.system_noise = diag([env.Sigma(1,1), env.Sigma(1,1), env.Sigma(2,2), env.Sigma(2,2)]); 
 EKF.StateCovariance = diag([env.Sigma(1,1), env.Sigma(1,1), env.Sigma(2,2), env.Sigma(2,2)]); % Initial state covariance                     
 % EKF.StateCovariance = EKF.system_noise; % Initial state covariance
@@ -314,30 +314,41 @@ for mc = 1:num_monte_carlo
                         % ADMM.initial_values(:, i) = xpred;
                         % ADMM.initial_values = repmat(ADMM.final_tracking_estimation{tar, k-1}, 1,network_topo.numNodes); 
                     end
-                    for iter = 1: network_topo.numNodes
-                        current_neighbors = find(network_topo.laplacian_matrix(n, :) ~= 0);
-                        it = 0;
-                        mean_neighbors ={};
-                        cov_neigbors ={};
-                        for j = current_neighbors
-                            it = it+1;
-                            % r_neigbors(:,it) = norm(ADMM.initial_values(1:2, j),2);
-                            % v_neigbors(:,it) = norm(ADMM.initial_values(1:2, j),2);
-                            cov_neigbors{it} = EKF.filter{j}.StateCovariance;
-                            mean_neighbors{it} = EKF.filter{j}.State';
-                            % sigma_r_neigbors(:,:,it) = EKF.filter{j}.StateCovariance(1:2,1:2);
-                            % sigma_v_neigbors(:,:,it) = EKF.filter{j}.StateCovariance(3:4,3:4);
-                        end
-                        % ADMM.prev_r{iter} = r_neigbors;
-                        % ADMM.prev_v{iter} = v_neigbors;
-                        % ADMM.prev_sigma_r{iter} = sigma_r_neigbors;
-                        % ADMM.prev_sigma_v{iter} = sigma_v_neigbors;
-                        ADMM.prior_mean{iter} = mean_neighbors;
-                        ADMM.prior_cov{iter} = cov_neigbors;
-                        % TO CHECK IF THIS IS CORRECT, at what timestamp? can be N*CPI-1
-                    end
+                    % for iter = 1: network_topo.numNodes
+                    %     current_neighbors = find(network_topo.laplacian_matrix(n, :) ~= 0);
+                    %     it = 0;
+                    %     mean_neighbors ={};
+                    %     cov_neigbors ={};
+                    %     for j = current_neighbors
+                    %         it = it+1;
+                    %         % r_neigbors(:,it) = norm(ADMM.initial_values(1:2, j),2);
+                    %         % v_neigbors(:,it) = norm(ADMM.initial_values(1:2, j),2);
+                    %         cov_neigbors{it} = EKF.filter{j}.StateCovariance;
+                    %         mean_neighbors{it} = EKF.filter{j}.State';
+                    %         % sigma_r_neigbors(:,:,it) = EKF.filter{j}.StateCovariance(1:2,1:2);
+                    %         % sigma_v_neigbors(:,:,it) = EKF.filter{j}.StateCovariance(3:4,3:4);
+                    %     end
+                    %     % ADMM.prev_r{iter} = r_neigbors;
+                    %     % ADMM.prev_v{iter} = v_neigbors;
+                    %     % ADMM.prev_sigma_r{iter} = sigma_r_neigbors;
+                    %     % ADMM.prev_sigma_v{iter} = sigma_v_neigbors;
+                    %     ADMM.prior_mean{iter} = mean_neighbors;
+                    %     ADMM.prior_cov{iter} = cov_neigbors;
+                    %     % TO CHECK IF THIS IS CORRECT, at what timestamp? can be N*CPI-1
+                    % end
                 end
                 % %-- P3-2: Distributed consensus optimization (ADMM)
+                 %% TODO: Consensus Algorithm 
+                global_state = models_ut.local2global(network_topo.radar_pos,ADMM.initial_values');
+                [estimated_params, x_hist, P, L, eps_used, diff_hist] = consensus(global_state, network_topo.adj_matrix);
+                %TODO: Remenber to reset ADMM.iteration = 0; ADMM.converged = false ; after each time step, can write a re-set function in trackingEKF class
+                ADMM.final_tracking_estimation{tar, k} = estimated_params;% Also de-whiten
+                ADMM = ut.ADMM_reset(ADMM,NUM_TAR,network_topo);
+                Results.primal_residauls{k} = diff_hist;
+                % Results.dual_residauls{k} = ;
+                Results.estimations{k} = x_hist;
+                Results.true_params{k} = [squeeze(target.target_position(tar, k*NUM_CPI_PER_MEA, :))', target.true_params(3), target.true_params(4)];
+                Results.convg_iter{k} = size(x_hist,3);
                 % iteration = 0;
                 % all_estimations = zeros(4, network_topo.numNodes);
                 % while ~ADMM.converged && iteration < ADMM.max_iter
@@ -582,3 +593,5 @@ for mc = 1:num_monte_carlo
         ut.write_exp_log('./data_log', append('exp_config',num2str(mc)),experiment_params_log);
     end
 end
+%% -- Plotting
+fig_ut.plot_trajectory(target.target_position,ADMM.final_tracking_estimation);
