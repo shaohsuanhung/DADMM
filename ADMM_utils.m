@@ -436,7 +436,9 @@ classdef ADMM_utils
             target_pos_expand = repmat(reshape(target.target_position,[num_target,1,size(target.target_position,2),size(target.target_position,3)]),[1,network_topo.numNodes,1,1]);
             relative_position = -(radar_pos_expand - target_pos_expand); % [num_target x numNodes x M x 2]
             range_true = vecnorm(relative_position,2,4); % [num_target x numNodes x M]
+            %TOCORRECT Doppler calculation
             doppler_true = reshape(reshape(relative_position,[],2)*[target.speed * target.direction]',[num_target,network_topo.numNodes,M])./(range_true.* env.lambda);
+            % doppler_true = reshape(reshape(relative_position,[],2)*[2.*target.speed * target.direction]',[num_target,network_topo.numNodes,M])./(range_true.* env.lambda);
             measurements_true(:,:, 1:2:end) = range_true; % Odd index for range
             measurements_true(:,:, 2:2:end) = doppler_true; % Even index for Doppler
         end

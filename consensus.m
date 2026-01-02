@@ -20,7 +20,7 @@
 % [x, x_hist, P, L, eps_used] = consensus(data, A, 'Verbose', true,'Tol', 1e-6);
 
 
-function [x, x_hist, P, L, eps_used] = consensus(x0, A, varargin)
+function [x, x_hist, P, L, eps_used, diff_hist] = consensus(x0, A, varargin)
 %CONSENSUS_LAPLACIAN  Discrete-time consensus: x_{k+1} = P x_k, P = I - eps*L.
 %
 % Inputs:
@@ -40,6 +40,7 @@ function [x, x_hist, P, L, eps_used] = consensus(x0, A, varargin)
 %   x_hist   : (n x (T+1)) history (if StoreHist=false, returns [])
 %   P, L     : Perron/mixing matrix and Laplacian
 %   eps_used : epsilon actually used
+%   diff_his : error over time
 
 % ---- parse inputs ----
 p = inputParser;
@@ -97,6 +98,7 @@ x = x0;
 
 if opts.StoreHist
     x_hist = zeros(n,m,opts.MaxIter + 1);
+    diff_hist = zeros(n,m,opts.MaxIter + 1);
     x_hist(:,:,1) = x0;
 else
     x_hist = [];
@@ -110,6 +112,7 @@ for k = 1:opts.MaxIter
 
     if opts.StoreHist
         x_hist(:,:,k+1) = x;
+        diff_hist(:,k+1) = diff_inf;
     end
 
     if opts.Verbose && (mod(k,100) == 0 || diff_inf < opts.Tol)
@@ -118,14 +121,18 @@ for k = 1:opts.MaxIter
 
     if diff_inf < opts.Tol
         if opts.StoreHist
-            x_hist = x_hist(:,1:k+1);
+            x_hist = x_hist(:,:,1:k+1);
+            diff_hist = diff_hist(:,:,1:k+1);
         end
+        x = x';
         return;
     end
 end
 
 if opts.StoreHist
-    x_hist = x_hist(:,1:opts.MaxIter+1);
+    x_hist = x_hist(:,:,1:opts.MaxIter+1);
+    diff_hist = diff_hist(:,:,1:opts.MaxIter+1);
+    x = x';
 end
 
 end

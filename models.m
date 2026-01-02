@@ -46,6 +46,8 @@ classdef models
             dist_node_tar = @(x,y) sqrt((x)^2 + (y)^2);
             % r = max(dist_node_tar(x,y,network_topo.radar_pos(idx,:)),1); % Avoid division by zero for stability
             r = max(dist_node_tar(x,y),1); % Avoid division by zero for stability
+
+            % Different lambda for refactored version
             f =  ((v_x*(x))+(v_y*(y)))/(3e-2*r);
             z = [r; f];
 
@@ -63,18 +65,28 @@ classdef models
             dr_dy =  @(idx,x,y,v_x,v_y, network_topo)  (y)/(r);
 
 
-            df_dx = @(idx,x,y,v_x,v_y, network_topo) ((-v_x*r)+...
-                                                    ((v_x*(-x)+v_y*(-y))*...
-                                                    (-x)/r))/...
-                                                    (env.lambda*r^2);
+            % df_dx = @(idx,x,y,v_x,v_y, network_topo) ((-v_x*r)+...
+            %                                         ((v_x*(-x)+v_y*(-y))*...
+            %                                         (-x)/r))/...
+            %                                         (env.lambda*r^2);
 
-            df_dy = @(idx,x,y,v_x,v_y, network_topo)  ((-v_y*r)+...
-                                                    ((v_x*(-x)+v_y*(-y))*...
-                                                    (-y)/r))/...
-                                                    (env.lambda*r^2);
+            % df_dy = @(idx,x,y,v_x,v_y, network_topo)  ((-v_y*r)+...
+            %                                         ((v_x*(-x)+v_y*(-y))*...
+            %                                         (-y)/r))/...
+            %                                         (env.lambda*r^2);
 
-            df_dvx = @(idx,x,y,v_x,v_y, network_topo) -(x)/ (env.lambda*r);
-            df_dvy = @(idx,x,y,v_x,v_y, network_topo) -(y)/ (env.lambda*r); 
+            % df_dvx = @(idx,x,y,v_x,v_y, network_topo) -(x)/ (env.lambda*r);
+            % df_dvy = @(idx,x,y,v_x,v_y, network_topo) -(y)/ (env.lambda*r); 
+
+            
+            df_dx = @(idx,x,y,v_x,v_y, network_topo) (v_x*r^2-(v_x*x+v_y*y)*x)/...
+                                                    (env.lambda*r^3);
+
+            df_dy = @(idx,x,y,v_x,v_y, network_topo)  (v_y*r^2-(v_x*x+v_y*y)*y)/...
+                                                    (env.lambda*r^3);
+
+            df_dvx = @(idx,x,y,v_x,v_y, network_topo) (x)/ (env.lambda*r);
+            df_dvy = @(idx,x,y,v_x,v_y, network_topo) (y)/ (env.lambda*r); 
 
 
             z = [dr_dx(idx,x,y,v_x,v_y, network_topo), dr_dy(idx,x,y,v_x,v_y, network_topo), 0, 0; 
@@ -247,6 +259,32 @@ classdef models
                 global_vy = local_state(4);
                 global_states(idx, :) = [global_x, global_y, global_vx, global_vy];
             end 
+        end
+
+
+        function checkJacobian()
+            env.lambda = 3e8/10e9;
+            env.pre_whit_L = eye(2);
+
+            state = [1000; -500; -14; 14];  % example local state
+            eps = 1e-6;
+
+            % analytic
+            H = models.LocalMeasureModelJacobian(state, 1, [], env);
+
+            % numeric
+            z0 = models.LocalMeasureModel(state, 1, [], env);
+            Hn = zeros(2,4);
+            for k=1:4
+                s = state;
+                s(k) = s(k) + eps;
+                zk = models.LocalMeasureModel(s, 1, [], env);
+                Hn(:,k) = (zk - z0)/eps;
+            end
+
+            disp("Analytic H:"); disp(H);
+            disp("Numeric  H:"); disp(Hn);
+            disp("Max abs diff:"); disp(max(abs(H(:)-Hn(:))));
         end
 
     end

@@ -3,7 +3,7 @@ ut = ADMM_utils;
 models_ut = models;
 fig_ut = make_figs(10);
 DEBUG = true;
-PRE_WHITEN = false; % Whether to pre-whiten the measurements
+PRE_WHITEN = true; % Whether to pre-whiten the measurements
 % P0, TODO: We can make the setting into config file (e.g., target, env, ...), then we can sacve up to 150 lines
 %% P1: Initialize ---
 %-- P1-0: Simulation Scenarios parameters
@@ -179,15 +179,15 @@ EKF.LocalMeasureModelJacobian = @(state, idx, network_topo, env) (models_ut.Loca
 EKF.MeasureModel = @(state, idx, network_topo, env) (models_ut.MeasureModel(state, idx, network_topo, env));
 EKF.MeasureModelJacobian = @(state, idx, network_topo, env) (models_ut.MeasureModelJacobian(state, idx, network_topo, env));
 
-% EKF.system_noise = 1e-2 * [EKF.delta_k^4/4, 0, EKF.delta_k^3/2, 0; 
-%                           0, EKF.delta_k^4/4, 0, EKF.delta_k^3/2; 
-%                           EKF.delta_k^3/2, 0, EKF.delta_k^2, 0; 
-%                           0, EKF.delta_k^3/2, 0, EKF.delta_k^2]; % System noise covariance
-
-EKF.system_noise = 1e3 * [EKF.delta_k^4/4, 0, EKF.delta_k^3/2, 0; 
+EKF.system_noise = 1e-2 * [EKF.delta_k^4/4, 0, EKF.delta_k^3/2, 0; 
                           0, EKF.delta_k^4/4, 0, EKF.delta_k^3/2; 
                           EKF.delta_k^3/2, 0, EKF.delta_k^2, 0; 
                           0, EKF.delta_k^3/2, 0, EKF.delta_k^2]; % System noise covariance
+
+% EKF.system_noise = 1e3 * [EKF.delta_k^4/4, 0, EKF.delta_k^3/2, 0; 
+%                           0, EKF.delta_k^4/4, 0, EKF.delta_k^3/2; 
+%                           EKF.delta_k^3/2, 0, EKF.delta_k^2, 0; 
+%                           0, EKF.delta_k^3/2, 0, EKF.delta_k^2]; % System noise covariance
 % EKF.system_noise = diag([env.Sigma(1,1), env.Sigma(1,1), env.Sigma(2,2), env.Sigma(2,2)]); 
 % EKF.StateCovariance = diag([env.Sigma(1,1), env.Sigma(1,1), env.Sigma(2,2), env.Sigma(2,2)]); % Initial state covariance                     
 % EKF.StateCovariance = EKF.system_noise; % Initial state covariance
@@ -279,7 +279,7 @@ for mc = 1:num_monte_carlo
                         %--
                         [xpred, Ppred] = predict(EKF.filter{i}, env.time_step);
                         correct(EKF.filter{i}, env.pre_whit_L*[current_range_meas(instance), current_doppler_meas(instance)]', i ,network_topo, env);
-                        all_estimation_from_EKFs{(k-1)*NUM_CPI_PER_MEA+instance, i} = EKF.filter{i}.State; % TO DLELETE AFTER DEBUGGING
+                        % all_estimation_from_EKFs{(k-1)*NUM_CPI_PER_MEA+instance, i} = EKF.filter{i}.State; % TO DLELETE AFTER DEBUGGING
                         x_pred_from_EKFs{(k-1)*NUM_CPI_PER_MEA+instance, i} = xpred; % TO DLELETE AFTER DEBUGGING
                         P_pred_from_EKFs{(k-1)*NUM_CPI_PER_MEA+instance, i} = Ppred; % TO DLELETE AFTER DEBUGGING
                     end
@@ -287,16 +287,16 @@ for mc = 1:num_monte_carlo
                     %-- Update EKF with each measurement in one row (update KF per burst)
                     % [xpred, Ppred] = predict(EKF.filter{i}, NUM_CPI_PER_MEA*env.time_step);
                     % correct(EKF.filter{i}, [current_range_meas(end), current_doppler_meas(end)], i ,network_topo,env);
-                    % all_estimation_from_EKFs{k, i} = EKF.filter{i}.State; % TO DLELETE AFTER DEBUGGING
-                    % x_pred_from_EKFs{k, i} = xpred; % TO DLELETE AFTER DEBUGGING
-                    % P_pred_from_EKFs{k, i} = Ppred; % TO DLELETE AFTER DEBUGGING
+                    all_estimation_from_EKFs{k, i} = EKF.filter{i}.State; % TO DLELETE AFTER DEBUGGING
+                    x_pred_from_EKFs{k, i} = xpred; % TO DLELETE AFTER DEBUGGING
+                    P_pred_from_EKFs{k, i} = Ppred; % TO DLELETE AFTER DEBUGGING
                     % Perform EKF prediction and update
                     % predict(EKF.filter{i}KF,E.delta_k);
                     % % [EKF.filter{i}.State, EKF.filter{i}.StateCovariance] = correct(EKF.filter{i}, current_measurements(:, i), i ,network_topo,env);
                     % correct(EKF.filter{i}, current_measurements(:, i), i ,network_topo,env);
                     % Store the EKF estimate as the initial value for ADMM
                 end
-                %--- Local EKF to ADMM for consensus optimization, handover (1) Initial value, (2) Prior information 
+                %--- Local EKF for consensus optimization, handover (1) Initial value, (2) Prior information 
                 if k~= 1
                     for i = 1: network_topo.numNodes
                         % global to local coord for initlial value and prior
@@ -310,168 +310,16 @@ for mc = 1:num_monte_carlo
                 end       
 
                 %% TODO: Consensus Algorithm 
-                [estimated_params, x_hist, P, L, eps_used] = consensus(ADMM.initial_values', network_topo.adj_matrix);
-
-                % for iter = 1: network_topo.numNodes
-                %         current_neighbors = find(network_topo.laplacian_matrix(n, :) ~= 0);
-                %         it = 0;
-                %         mean_neighbors ={};
-                %         cov_neigbors ={};
-                %         for j = current_neighbors
-                %             it = it+1;
-                %             % r_neigbors(:,it) = norm(ADMM.initial_values(1:2, j),2);
-                %             % v_neigbors(:,it) = norm(ADMM.initial_values(1:2, j),2);
-                %             cov_neigbors{it} = EKF.filter{j}.StateCovariance;
-                %             mean_neighbors{it} = EKF.filter{j}.State';
-                %             % sigma_r_neigbors(:,:,it) = EKF.filter{j}.StateCovariance(1:2,1:2);
-                %             % sigma_v_neigbors(:,:,it) = EKF.filter{j}.StateCovariance(3:4,3:4);
-                %         end
-                %         % ADMM.prev_r{iter} = r_neigbors;
-                %         % ADMM.prev_v{iter} = v_neigbors;
-                %         % ADMM.prev_sigma_r{iter} = sigma_r_neigbors;
-                %         % ADMM.prev_sigma_v{iter} = sigma_v_neigbors;
-                %         ADMM.prior_mean{iter} = mean_neighbors;
-                %         ADMM.prior_cov{iter} = cov_neigbors;
-                %         % TO CHECK IF THIS IS CORRECT, at what timestamp? can be N*CPI-1
-                % end
-                % %-- P3-2: Distributed consensus optimization (ADMM)
-                % iteration = 0;
-                % all_estimations = zeros(4, network_topo.numNodes);
-                % while ~ADMM.converged && iteration < ADMM.max_iter
-                %     fprintf('Time step %d, ADMM iteration: %d\n', k, iteration);
-                %     iteration = iteration + 1;
-                %     for n = 1:network_topo.numNodes
-                %         for j = neighbors{n}
-                %             % Update nu
-                %             ADMM.Nu{n}(:, j) = ADMM.Nu_prev{n}(:, j) + ADMM.c_penalty' .* (ADMM.initial_values(:, n) - ADMM.update_z_prev{n}(:, j));
-                %         end
-                %         if k == 1
-                %             fun = @(params) ut.logLikelihoodWithConsensus(params, range_with_error_cell_window{n},doppler_with_error_cell_window{n},...
-                %                                              radar_positions_withNeighbors{n},numNodes_withNeighbors{n}, NUM_CPI_PER_MEA, env.lambda,...
-                %                                              env.Sigma, n, neighbors, ADMM.Nu, ADMM.initial_values,...
-                %                                               ADMM.update_z_prev, ADMM.c_penalty);
-                %         else
-
-                %             fun = @(params) ut.posteriorWithConsensus(params, range_with_error_cell_window{n},doppler_with_error_cell_window{n},...
-                %                                              ADMM.prior_mean{n}, ADMM.prior_cov{n},...
-                %                                              radar_positions_withNeighbors{n},numNodes_withNeighbors{n}, NUM_CPI_PER_MEA, env.lambda,...
-                %                                              env.Sigma, n, neighbors, ADMM.Nu, ADMM.initial_values,...
-                %                                              ADMM.update_z_prev, ADMM.c_penalty);
-                %         end
-
-                %         % save("variable.mat","range_with_error_cell_window","doppler_with_error_cell_window",...
-                %         %                                      "radar_positions_withNeighbors","numNodes_withNeighbors", "NUM_CPI_PER_MEA", "env",...
-                %         %                                       "n", "neighbors", "ADMM");
-                %         estimated_params = fmincon(fun, ADMM.initial_values(:,n),[],[],[],[], ADMM.lb, ADMM.ub, [], ADMM.solver);
-                        
-                %         % try
-                %         %     estimated_params = fmincon(fun, ADMM.initial_values(:,n),[],[],[],[], ADMM.lb, ADMM.ub, [], ADMM.solver);
-                %         % catch
-                %         %     fprintf('Warning: Optimization failed at node %d, iteration %d. Using previous estimates:\n %d \n', n, iteration, ADMM.initial_values(:,n));
-                %         % end
-                %         all_estimations(:,n) = estimated_params;
-                %     end
-                %     ADMM.all_estimations_every_iter(:,:,iteration) = all_estimations;
-
-                %     for n = 1: network_topo.numNodes
-                %         for j = neighbors{n}
-                %             % Update z
-                %             ADMM.update_z{n}(:,j) = (1/2) * (((ADMM.c_penalty.^(-1))' .* (ADMM.Nu{n}(:,j) + ADMM.Nu{j}(:,n))) + all_estimations(:,n) + all_estimations(:, j)); 
-                %         end
-                %     end
-                    
-                %     %-- Check convergence for the timestamp
-                %     primal_residual = 0;
-                %     dual_residual = 0; 
-                %     primal_residual_params = zeros(4, 1);
-                %     dual_residual_params   = zeros(4, 1);
-                %     prima_residual_by_node = zeros(4,network_topo.numNodes);
-                %     dual_residual_by_node  = zeros(4,network_topo.numNodes);
-                %     for n  = 1:network_topo.numNodes
-                %         for j = neighbors{n}
-                %             primal_residual = primal_residual + norm(all_estimations(:,n) - ADMM.update_z{n}(:,j))^2;
-                %             primal_residual_params = primal_residual_params + abs(all_estimations(:,n) - ADMM.update_z{n}(:,j));
-                %             dual_residual = dual_residual + norm((ADMM.Nu{n}(:,j) - ADMM.Nu_prev{n}(:,j)))^2;
-                %             dual_residual_params = dual_residual_params + abs(ADMM.Nu{n}(:,j) - ADMM.Nu_prev{n}(:,j));
-                %         end
-                %         prima_residual_by_node(:,n) = primal_residual_params;
-                %         dual_residual_by_node(:,n)  = dual_residual_params;
-                %     end
-                %     ADMM.primal_residual_all(iteration)     = primal_residual;
-                %     ADMM.dual_residual_all(iteration)       = dual_residual;
-                %     ADMM.primal_residual_by_para{iteration} = prima_residual_by_node;
-                %     ADMM.dual_residual_by_para{iteration}   = dual_residual_by_node; 
-
-                %     % Stop criteria
-                %     if primal_residual < 10* dual_residual
-                %         ADMM.c_penalty = ADMM.tau_incr .* ADMM.c_penalty;
-                %     elseif dual_residual < 10*primal_residual
-                %         ADMM.c_penalty = ADMM.c_penalty .* ((ADMM.tau_decr).^(-1));
-                %     end
-                    
-                %     ADMM.initial_values = all_estimations;
-                %     ADMM.update_z_prev = ADMM.update_z;
-                %     ADMM.Nu_prev = ADMM.Nu;
-                %     if norm(ADMM.primal_residual_by_para{iteration}(1:2)) < ADMM.tolerance
-                %         ADMM.converg_r = true;
-                %         % Set the store range value of primal residual
-                %         if isempty(ADMM.RANGE_Xs)
-                %             if DEBUG
-                %                 disp("[Debug] Range X params converge"+norm(ADMM.primal_residual_by_para{iteration}(1:2))+"<"+ADMM.tolerance);
-                %             end
-                %             ADMM.RANGE_Xs = all_estimations(1,:);
-                %         end
-                %         if isempty(ADMM.RANGE_Ys)
-                %             if DEBUG
-                %                 disp("[Debug] Range Y params converge"+norm(ADMM.primal_residual_by_para{iteration}(1:2))+"<"+ADMM.tolerance);
-                %             end
-                %             ADMM.RANGE_Ys = all_estimations(2,:);
-                %         end
-                %         if not(isempty(ADMM.RANGE_Xs)) && not(isempty(ADMM.RANGE_Ys))
-                %             % Replace 
-                %             if DEBUG
-                %                 disp("[Debug] Replace Range estimations "+mean(all_estimations(1,:))+","+mean(all_estimations(2,:))+" with "+mean(ADMM.RANGE_Xs)+","+mean(ADMM.RANGE_Ys)+")");
-                %             end
-                %             all_estimations(1,:) = ADMM.RANGE_Xs;
-                %             all_estimations(2,:) = ADMM.RANGE_Ys;
-                %         end
-                %     end
-                %     if norm(ADMM.primal_residual_by_para{iteration}(3:4)) < ADMM.tolerance
-                %         ADMM.converg_d = true;
-                %         % Set the store doppler value of primal residual
-                %         if isempty(ADMM.DOPPLER_Xs)
-                %             if DEBUG
-                %                 disp("[Debug] Doppler X params converge"+norm(ADMM.primal_residual_by_para{iteration}(3:4))+"<"+ADMM.tolerance);
-                %             end
-                %             ADMM.DOPPLER_Xs = all_estimations(3,:);
-                %         end
-                %         if isempty(ADMM.DOPPLER_Ys)
-                %             ADMM.DOPPLER_Ys = all_estimations(4,:);
-                %             if DEBUG
-                %                 disp("[Debug] Doppler Y params converge"+norm(ADMM.primal_residual_by_para{iteration}(3:4))+"<"+ADMM.tolerance);
-                %             end
-                %         end
-                %         if not(isempty(ADMM.DOPPLER_Ys)) && not(isempty(ADMM.DOPPLER_Xs))
-                %             % Replace 
-                %             if DEBUG
-                %                 disp("[Debug] Replace Doppler estimations "+mean(all_estimations(3,:))+","+mean(all_estimations(4,:))+" with "+mean(ADMM.DOPPLER_Xs)+","+mean(ADMM.DOPPLER_Ys)+")");
-                %             end
-                %             all_estimations(3,:) = ADMM.DOPPLER_Xs;
-                %             all_estimations(4,:) = ADMM.DOPPLER_Ys;
-                %         end
-                %     end
-                %     if (ADMM.converg_r && ADMM.converg_d) || (iteration == ADMM.max_iter)
-                %         ADMM.converged = true;
-                %     end        
-
-                % end %TODO: Remenber to reset ADMM.iteration = 0; ADMM.converged = false ; after each time step, can write a re-set function in trackingEKF class
+                global_state = models_ut.local2global(network_topo.radar_pos,ADMM.initial_values');
+                [estimated_params, x_hist, P, L, eps_used, diff_hist] = consensus(global_state, network_topo.adj_matrix);
+                %TODO: Remenber to reset ADMM.iteration = 0; ADMM.converged = false ; after each time step, can write a re-set function in trackingEKF class
                 ADMM.final_tracking_estimation{tar, k} = estimated_params;% Also de-whiten
                 ADMM = ut.ADMM_reset(ADMM,NUM_TAR,network_topo);
-                Results.primal_residauls{k} = ADMM.primal_residual_all;
-                Results.dual_residauls{k} = ADMM.dual_residual_all;
-                Results.estimations{k} = ADMM.all_estimations_every_iter;
-                Results.true_params{k} = target.true_params;
-                Results.convg_iter{k} = iteration;
+                Results.primal_residauls{k} = diff_hist;
+                % Results.dual_residauls{k} = ;
+                Results.estimations{k} = x_hist;
+                Results.true_params{k} = [squeeze(target.target_position(tar, k*NUM_CPI_PER_MEA, :))', target.true_params(3), target.true_params(4)];
+                Results.convg_iter{k} = size(x_hist,3);
                 % clear all_estimations;
 
                 % % end %TODO: Remenber to reset ADMM.iteration = 0; ADMM.converged = false ; after each time step, can write a re-set function in trackingEKF class
@@ -563,3 +411,6 @@ for mc = 1:num_monte_carlo
         ut.write_exp_log('./data_log', append('exp_config',num2str(mc)),experiment_params_log);
     end
 end
+
+%% -- Plotting
+fig_ut.plot_trajectory(target.target_position,ADMM.final_tracking_estimation);
