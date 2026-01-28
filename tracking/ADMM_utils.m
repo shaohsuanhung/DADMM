@@ -29,8 +29,9 @@ classdef ADMM_utils
                 % Add the whitening transformation here if needed
                 if ~isempty(varargin)
                     L = varargin{1};
-                    r_model = L(1,1) * r_model + L(1,2) * f_d_model;
-                    f_d_model = L(2,1) * r_model + L(2,2) * f_d_model;
+                     tmp = L * [r_model; f_d_model];
+                    r_model  = tmp(1);
+                    f_d_model = tmp(2);
                 end
                 for i = 1:M                    
                     % Extracting current measurements
@@ -455,13 +456,13 @@ classdef ADMM_utils
             doppler_with_error = doppler_true + doppler_noise_all;
             %---- %% Correct: Jan 6, Move whithen to algorithm part, will
             %not do it in the siganl generation part.
-            % if env.PRE_WHITEN
-            %         L = env.pre_whit_L;
-            %         r0 = range_with_error;
-            %         f0 = doppler_with_error;
-            %         range_with_error   = L(1,1)*r0 + L(1,2)*f0;
-            %         doppler_with_error = L(2,1)*r0 + L(2,2)*f0;
-            % end
+            if env.PRE_WHITEN
+                    L = env.pre_whit_L;
+                    r0 = range_with_error;
+                    f0 = doppler_with_error;
+                    range_with_error   = L(1,1)*r0 + L(1,2)*f0;
+                    doppler_with_error = L(2,1)*r0 + L(2,2)*f0;
+            end
             measurements_all_with_error = zeros(NUM_TAR,numNodes, M*2);
             measurements_all_with_error(:,:, 1:2:end) = range_with_error; % Odd index for range
             measurements_all_with_error(:,:, 2:2:end) = doppler_with_error; % Even index for Doppler

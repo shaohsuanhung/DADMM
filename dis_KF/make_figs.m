@@ -1,6 +1,7 @@
 classdef make_figs
     properties (Constant)
-        labels_params = {'Position x ', 'Position y ', 'Velocity x ', 'Velocity y '};
+        % labels_params = {'Position x ', 'Position y ', 'Velocity x ', 'Velocity y '};
+        labels_params = {'$x$', '$y$', '$v_x$', '$v_y$ '};
     end
     
     properties 
@@ -36,17 +37,48 @@ classdef make_figs
             end
             sgtitle('Parameters of interest (\theta) Estimations');
         end
+        % function plot_converge_across_node_withCentrl(obj,all_estimations_every_iter,true_params,network_topo, all_estimations_centrl)
+        %     figure;
+        %     set(gcf,'Color','white');
+        %     set(gca,'FontSize',24);
+        %     for param = 1:4
+        %         subplot(2, 2, param);
+        %         hold on;  % Allows multiple plots on the same axes
+        % 
+        %         % Plot estimations for each node
+        %         for node = 1:network_topo.numNodes
+        %             plot(squeeze(all_estimations_every_iter(param, node, :)), 'Color', obj.colors(node, :));
+        %         end
+        % 
+        %         % Plot true parameter as a dotted line
+        %         h_true = yline(true_params(param), '--k', 'LineWidth', 1.5);
+        %         h_centrl = yline(all_estimations_centrl(param), '--r', 'LineWidth', 1.5);
+        % 
+        %         hold off;
+        %         xlabel('Iterations');
+        %         ylabel(['Parameter ' obj.labels_params{param} 'estimates']);
+        %         title([obj.labels_params{param}]);
+        %         legend_entries = arrayfun(@(x) ['Node ' num2str(x)], 1:network_topo.numNodes, 'UniformOutput', false);
+        %         legend_entries{end+1} = 'True Parameter';
+        %         legend_entries{end+1} = 'Centralized';
+        %         legend([legend_entries], 'Location', 'northeastoutside');
+        %     end
+        %     sgtitle('Parameters of interest (\theta) Estimations');
+        % end
         function plot_converge_across_node_withCentrl(obj,all_estimations_every_iter,true_params,network_topo, all_estimations_centrl)
             figure;
             set(gcf,'Color','white');
-            set(gca,'FontSize',24);
+            % set(gca,'FontSize',40);
+            t = tiledlayout(2,2);
+            % t.FontSize = 40
             for param = 1:4
-                subplot(2, 2, param);
+                % subplot(2, 2, param);
+                ax = nexttile;
                 hold on;  % Allows multiple plots on the same axes
             
                 % Plot estimations for each node
                 for node = 1:network_topo.numNodes
-                    plot(squeeze(all_estimations_every_iter(param, node, :)), 'Color', obj.colors(node, :));
+                    plot(squeeze(all_estimations_every_iter(param, node, :)), 'Color', obj.colors(node, :),'LineWidth',1.5);
                 end
             
                 % Plot true parameter as a dotted line
@@ -54,19 +86,27 @@ classdef make_figs
                 h_centrl = yline(all_estimations_centrl(param), '--r', 'LineWidth', 1.5);
             
                 hold off;
-                xlabel('Iterations');
-                ylabel(['Parameter ' obj.labels_params{param} 'estimates']);
-                title([obj.labels_params{param}]);
+                hx = xlabel('Optimization iteration');
+                hy = ylabel([obj.labels_params{param} 'estimates'],'Interpreter','latex');
+                title([obj.labels_params{param}],'FontSize',14);
                 legend_entries = arrayfun(@(x) ['Node ' num2str(x)], 1:network_topo.numNodes, 'UniformOutput', false);
                 legend_entries{end+1} = 'True Parameter';
                 legend_entries{end+1} = 'Centralized';
-                legend([legend_entries], 'Location', 'northeastoutside');
-
-                if param == 1 | param == 2
-                    xlim([1 25]);
+                legend([legend_entries], 'Location', 'northeast','FontSize',12);
+                hx.FontSize= 18;
+                hy.FontSize= 18; 
+                if (param == 1 | param == 2)
+                    xlim([0, 50]);
                 end
+                if (param == 3 | param == 4)
+                    xlim([0, 100]);
+                end
+                box on; grid on;
             end
-            sgtitle('Parameters of interest (\theta) Estimations');
+            t.TileSpacing = 'compact';
+            t.Padding = 'compact';
+            
+            % sgtitle('Parameters of interest (\theta) Estimations');
         end
         function plot_dual_primal_residual(obj,dual_residual_all,primal_residual_CR, all_estimations_every_iter_CR,laplacian_matrix_CR,network_topo)
             % Dual Residual Convergence
@@ -435,14 +475,34 @@ classdef make_figs
             title('Target Trajectory');
             legend('Location', 'northeastoutside');
         end
-        function plot_geometry_and_target(obj, network_topo, target_position,L)
-            
+        function plot_geometry_and_target(obj, network_topo, target_position)
             figure;
             set(gcf,'Color','white');
             set(gca,'FontSize',24);
             hold on;
+            plot(network_topo.radar_pos(:,1), network_topo.radar_pos(:,2), 'rs', 'MarkerSize', 10, 'DisplayName', 'Sensor Nodes');
+            plot(target_position(1), target_position(2), 'k*', 'MarkerSize', 10, 'DisplayName', 'Target Position');
+            hold off;
+            xlabel('Position x (m)');
+            ylabel('Position y (m)');
+            title('Network Geometry and Target Position');
+            legend('Location', 'northeastoutside');
+        end
+        function plot_trajectory_and_network(obj, true_trajectory, estimated_trajectory,network_topo)
+            % Shape of the inputs:
+            % true_trajectory: [Num target, track_time, 2]
+            % estimated_trajectory: cell(track_time): [4 x 1]
+            estimated_trajectory = cell2mat(estimated_trajectory);
+            fig = figure;
+            set(gcf,'Color','white');
+            set(gca,'FontSize',30);
+            hold on;
+            plot(true_trajectory(1, :, 1), true_trajectory(1, :, 2), '--ok', 'LineWidth', 0.1, 'DisplayName', 'True Trajectory');
             plot(network_topo.radar_pos(:,1), network_topo.radar_pos(:,2), 'r.', 'MarkerSize', 50, 'DisplayName', 'Sensor Nodes');
-            plot(target_position(:,1), target_position(:,2), '-.ok', 'MarkerSize', 10, 'DisplayName', 'True trajectory');
+            % plot(true_trajectory(1, 1:size(true_trajectory,2)-64, 1),true_trajectory(1, 1:size(true_trajectory,2)-64, 2), '-r', 'LineWidth', 1, 'DisplayName', 'Ground truth location');
+            plot(estimated_trajectory(1,:), estimated_trajectory(2,:), '--ob', 'LineWidth', 2, 'DisplayName', 'Estimated Trajectory');
+
+            % Plot communication link
             for n = 1:network_topo.numNodes 
                 neighbors_idx = find(network_topo.laplacian_matrix(n,:) == -1).'; 
                 % pairs = nchoosek(neighbors_idx,2);
@@ -457,15 +517,73 @@ classdef make_figs
                          '--k','LineWidth',1.5);
                 end
             end
-            objs = findobj(gca, '-property', 'DisplayName');
-            objs = objs(arrayfun(@(h) ~isempty(h.DisplayName), objs));  
-            legend(flipud(objs), 'Location', 'northwest');  
+
             hold off;
             xlabel('Position x (m)');
             ylabel('Position y (m)');
-            % title('Network Geometry and Target Position');
-            legend('Location', 'northeastoutside');
-            grid on ;
+            % title('Target Trajectory');
+            % legend('Location', 'best');
+            objs = findobj(gca, '-property', 'DisplayName');
+            objs = objs(arrayfun(@(h) ~isempty(h.DisplayName), objs));  
+            legend(flipud(objs), 'Location', 'bestoutside');  
+            grid on;box on;ax=gca;ax.LineWidth=1.5;
+            exportgraphics(fig, 'output.pdf', 'ContentType', 'vector');
+
+        end
+        function plot_converge_mse_across_node_withCentrl(obj,all_estimations_every_iter,true_params,network_topo, all_estimations_centrl)
+            figure;
+            set(gcf,'Color','white');
+            % set(gca,'FontSize',40);
+            t = tiledlayout(2,2);
+            % t.FontSize = 40
+            for param = 1:4
+                % subplot(2, 2, param);
+                ax = nexttile;
+                hold on;  % Allows multiple plots on the same axes
+            
+                % Plot estimations for each node
+                for node = 1:network_topo.numNodes
+                    mse_da = sqrt((squeeze(all_estimations_every_iter(param, node, :)) - true_params(param)).^2);
+                    plot(mse_da, 'Color', obj.colors(node, :),'LineWidth',1.5);
+                end
+            
+                % Plot true parameter as a dotted line
+                % h_true = yline(true_params(param), '--k', 'LineWidth', 1.5);
+                mse_ca = sqrt((all_estimations_centrl(param) - true_params(param))^2);
+                % h_true= yline(0 , '--k', 'LineWidth', 1.5);
+                h_centrl = yline(mse_ca , '--k', 'LineWidth', 2);
+                
+            
+                hold off;
+                hx = xlabel('Optimization iteration');
+                % hy = ylabel([obj.labels_params{param} 'estimates']);
+                % hy = ylabel(['MSE of ' obj.labels_params{param} '$\sum_{n}(\hat{\boldsymbol{\theta}} - \boldsymbol{\theta})$'],'Interpreter','latex');
+                hy = ylabel(['MSE of ' obj.labels_params{param}],'Interpreter','latex');
+                % hy = ylabel('$\sum_{n}$','Interpreter','latex')
+                % title([obj.labels_params{param}],'FontSize',14);
+                % legend_entries = arrayfun(@(x) ['Node ' num2str(x)], 1:network_topo.numNodes, 'UniformOutput', false);
+                % legend_entries{end+1} = 'True Parameter';
+                % legend_entries{end+1} = 'Centralized';
+                % legend([legend_entries], 'Location', 'northeast','FontSize',12);
+                hx.FontSize= 18;
+                hy.FontSize= 18;
+                yscale(ax,"log");
+                % if (param == 1 | param == 2)
+                %     xlim([0, 20]);
+                % end
+                % if (param == 3 | param == 4)
+                %     xlim([0, 170]);
+                % end
+                box on; grid on;
+            end
+            legend_entries = arrayfun(@(x) ['Node ' num2str(x)], 1:network_topo.numNodes, 'UniformOutput', false);
+            % legend_entries{end+1} = 'True Parameter';
+            legend_entries{end+1} = 'Centralized';
+            legend([legend_entries], 'Location', 'northeast','FontSize',12);
+            lgd = legend;
+            lgd.Layout.Tile = 'east';
+            t.TileSpacing = 'compact';
+            t.Padding = 'compact';
         end
     end
 end

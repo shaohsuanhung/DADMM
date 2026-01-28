@@ -9,7 +9,7 @@ PRE_WHITEN = false;
 %-- P1-0: Simulation Scenarios parameters
 num_monte_carlo = 1; % Number of monte carlo runs
 NUM_CPI_PER_MEA = 64;    % Number of measurements per burst
-TRACK_TIME = 10;   % Number of burst times
+TRACK_TIME = 8;   % Number of burst times
 time_step = 1e-2;    % Time step between two measurements
 Results = struct();
 Results.primal_residauls = cell(1,TRACK_TIME); % In each cell (time stemp), store the primal residuals (cell: 1 x # iteration of opt.) 
@@ -42,7 +42,7 @@ end
 % [Try other trajectory]
 % t  = linspace(0, 10, TRACK_TIME*NUM_CPI_PER_MEA)';x = t+1000;y = sin(t)+1000;traj = [x, y];
 % target.target_position = reshape(traj,[1,TRACK_TIME*NUM_CPI_PER_MEA,2]);
-%
+
 %-- P1-2 Network topology
 %TODO: Make a obj list, for ablation study for different topo.
 network_topo.numNodes = 10;
@@ -375,7 +375,7 @@ for mc = 1:num_monte_carlo
                     disp("Debug: after"+estimated_params);
                 end %TODO: Remenber to reset ADMM.iteration = 0; ADMM.converged = false ; after each time step, can write a re-set function in trackingEKF class
                 ADMM.final_tracking_estimation{tar, k} = estimated_params;% Also de-whiten
-                ADMM = ut.ADMM_reset(ADMM,NUM_TAR,network_topo);
+                % 
                 % ADMM = ut.Initialized_ADMM(network_topo);
                 Results.primal_residauls{k} = ADMM.primal_residual_all;
                 Results.dual_residauls{k} = ADMM.dual_residual_all;
@@ -383,6 +383,7 @@ for mc = 1:num_monte_carlo
                 Results.true_params{k} = target.true_params;
                 Results.convg_iter{k} = iteration;
                 clear all_estimations;
+                ADMM = ut.ADMM_reset(ADMM,NUM_TAR,network_topo);
                 
                 % end %TODO: Remenber to reset ADMM.iteration = 0; ADMM.converged = false ; after each time step, can write a re-set function in trackingEKF class
                 % Plot EKF estimation result for each node one plot for each parameter
@@ -395,6 +396,7 @@ for mc = 1:num_monte_carlo
         %%
         % P4: Performance evaluation & Plotting 
         % fig_ut.plot_trajectory(target.target_position(NUM_TAR,NUM_CPI_PER_MEA:NUM_CPI_PER_MEA:size(target.target_position,2),:),ADMM.final_tracking_estimation);
+        % fig_ut.plot_converge_across_node_withCentrl(Results.estimations{1},[995,1004,14.17,-14.17]',network_topo,[995,1004,14.17,-14.17]');
         fig_ut.plot_trajectory(target.target_position,ADMM.final_tracking_estimation);
     end
     % Save the resulted estimation log in json file each monte carlo run

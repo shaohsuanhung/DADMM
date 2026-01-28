@@ -61,10 +61,6 @@ classdef make_figs
                 legend_entries{end+1} = 'True Parameter';
                 legend_entries{end+1} = 'Centralized';
                 legend([legend_entries], 'Location', 'northeastoutside');
-
-                if param == 1 | param == 2
-                    xlim([1 25]);
-                end
             end
             sgtitle('Parameters of interest (\theta) Estimations');
         end
@@ -426,8 +422,8 @@ classdef make_figs
             set(gcf,'Color','white');
             set(gca,'FontSize',24);
             hold on;
-            plot(true_trajectory(1, :, 1), true_trajectory(1, :, 2), '-.ok', 'LineWidth', 0.1, 'DisplayName', 'True Trajectory');
-            % plot(true_trajectory(1, 1:size(true_trajectory,2)-64, 1),true_trajectory(1, 1:size(true_trajectory,2)-64, 2), '-r', 'LineWidth', 1, 'DisplayName', 'Ground truth location');
+            % plot(true_trajectory(1, :, 1), true_trajectory(1, :, 2), '--r', 'LineWidth', 1, 'DisplayName', 'True Trajectory');
+            plot(true_trajectory(1, 1:size(true_trajectory,2)-64, 1),true_trajectory(1, 1:size(true_trajectory,2)-64, 2), '-r', 'LineWidth', 1, 'DisplayName', 'Ground truth location');
             plot(estimated_trajectory(1,:), estimated_trajectory(2,:), '--ob', 'LineWidth', 1.5, 'DisplayName', 'Estimated Trajectory');
             hold off;
             xlabel('Position x (m)');
@@ -435,37 +431,18 @@ classdef make_figs
             title('Target Trajectory');
             legend('Location', 'northeastoutside');
         end
-        function plot_geometry_and_target(obj, network_topo, target_position,L)
-            
+        function plot_geometry_and_target(obj, network_topo, target_position)
             figure;
             set(gcf,'Color','white');
             set(gca,'FontSize',24);
             hold on;
-            plot(network_topo.radar_pos(:,1), network_topo.radar_pos(:,2), 'r.', 'MarkerSize', 50, 'DisplayName', 'Sensor Nodes');
-            plot(target_position(:,1), target_position(:,2), '-.ok', 'MarkerSize', 10, 'DisplayName', 'True trajectory');
-            for n = 1:network_topo.numNodes 
-                neighbors_idx = find(network_topo.laplacian_matrix(n,:) == -1).'; 
-                % pairs = nchoosek(neighbors_idx,2);
-                for j = 1: size(neighbors_idx,1)
-                     if (n == 1 & j == 1)
-                         plot([network_topo.radar_pos(n,1),network_topo.radar_pos(neighbors_idx(j),1)],...
-                         [network_topo.radar_pos(n,2),network_topo.radar_pos(neighbors_idx(j),2)],...
-                         '--k','LineWidth',1.5,'DisplayName','Communication link');
-                     end
-                     plot([network_topo.radar_pos(n,1),network_topo.radar_pos(neighbors_idx(j),1)],...
-                         [network_topo.radar_pos(n,2),network_topo.radar_pos(neighbors_idx(j),2)],...
-                         '--k','LineWidth',1.5);
-                end
-            end
-            objs = findobj(gca, '-property', 'DisplayName');
-            objs = objs(arrayfun(@(h) ~isempty(h.DisplayName), objs));  
-            legend(flipud(objs), 'Location', 'northwest');  
+            plot(network_topo.radar_pos(:,1), network_topo.radar_pos(:,2), 'rs', 'MarkerSize', 10, 'DisplayName', 'Sensor Nodes');
+            plot(target_position(1), target_position(2), 'k*', 'MarkerSize', 10, 'DisplayName', 'Target Position');
             hold off;
             xlabel('Position x (m)');
             ylabel('Position y (m)');
-            % title('Network Geometry and Target Position');
+            title('Network Geometry and Target Position');
             legend('Location', 'northeastoutside');
-            grid on ;
         end
     end
 end

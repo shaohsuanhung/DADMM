@@ -14,6 +14,7 @@ theta = linspace(0,2*pi, network_topo.numNodes+1);
 network_topo.theta = theta(1:end-1);
 network_topo.com_rad_CR = 3000; % communication radius range
 network_topo.radius = 3000;     % spatial placement radius 
+com_rad_CR= 3000; % Communication radius in CD
 % n = 10;a = 1000;   % half-width
 % x = -a + 2*a*rand(n,1);y = -a + 2*a*rand(n,1);coords = [x, y];
 % network_topo.radar_pos = coords;
@@ -29,7 +30,7 @@ for i = 1:network_topo.numNodes
 end
 
 knn = 5;
-com_rad_CR= 3000; % Communication radius in CD
+
 %%%%%%%%%% Prior setup
 
 %%%%%%%%%%%
@@ -201,8 +202,8 @@ for mc = 1:num_monte_carol
     
 
         % y_0 and lower, upper bound
-        initial_guess = [1000, 1000, 10, 10]';
-        % initial_guess = [0, 0, 0, 0]';
+        % initial_guess = [1000, 1000, 10, 10]';
+        initial_guess = [0, 0, 10, 10]';
         lb = [-inf,-inf,-inf,-inf];
         ub = [inf,inf, inf, inf];
         if TYPE == "MLE"
@@ -318,7 +319,10 @@ for mc = 1:num_monte_carol
         % Start optmization
         while ~converged && iteration < max_iterations
             iteration = iteration+1;
-            fprintf('ADMM iteration: %d\n', iteration);
+            % fprintf('ADMM iteration: %d\n', iteration);
+            if iteration >2
+                fprintf('\rADMM iter %d, Primal: %d, Dual: %d\n', iteration,primal_residual, dual_residual);
+            end
             for n = 1: network_topo.numNodes
                 for j = neighbors{n}
                         % Eq. (4.17c)
@@ -499,8 +503,8 @@ fig_ut.plot_converge_across_node_withCentrl(all_estimations_every_iter,true_para
 % fig_ut.plot_MSE_error_compare_DA_DS(direction_mc,all_estimations_every_iter_mc,estimates_mc_CA, true_params_mc);
 
 
-%--
-fig_ut.plot_geometry_and_target(network_topo, target.target_position);
+%% --
+fig_ut.plot_geometry_and_target(network_topo, target.target_position,neighbors);
 % figure;
 % 
 % for param = 1:4

@@ -822,5 +822,217 @@ classdef ADMM_utils
                 converged = true;
             end
         end        
+        function pos = gen_ref_trajectory(N, bounds, dt, speed, opts)
+        %GEN_WALK_TRAJECTORY Realistic randomized walking trajectory segment.
+        %
+        %   pos = gen_walk_trajectory(N, bounds, dt, speed)
+        %   pos = gen_walk_trajectory(N, bounds, dt, speed, opts)
+        %
+        % Inputs
+        %   N      : number of samples (integer >= 2)
+        %   bounds : [xmin xmax ymin ymax] or [xmin xmax; ymin ymax]
+        %   dt     : sampling time [s], > 0
+        %   speed  : walking speed [m/s], >= 0
+        %   opts   : optional struct
+        %       .seed            : RNG seed (default [])
+        %       .randomizeShape  : true/false (default true)
+        %       .M               : number of waypoints for shape (default 18, >= 6)
+        %       .shapeJitterY    : normalized shape jitter (default 0.04)
+        %       .shapeJitterX    : normalized shape jitter (default 0.012)
+        %       .denseN          : dense samples for curve (default 4000)
+        %
+        %       % lateral "human" wandering (meters)
+        %       .lateralStd      : lateral deviation std [m] (default 0.25)
+        %       .lateralTau      : correlation time [s] (default 1.5)
+        %
+        %       % if desired length > curve length:
+        %       .longMode        : "clip" or "wrap" (default "clip")
+        %
+        % Output
+        %   pos    : [N x 2] trajectory positions [x,y] in meters
+        
+            if nargin < 5 || isempty(opts), opts = struct(); end
+        
+            % ---- validate inputs ----
+            if ~(isscalar(N) && N == round(N) && N >= 2)
+                error("N must be an integer >= 2.");
+            end
+            if ~(isscalar(dt) && isfinite(dt) && dt > 0)
+                error("dt must be a positive scalar (seconds).");
+            end
+            if ~(isscalar(speed) && isfinite(speed) && speed >= 0)
+                error("speed must be a nonnegative scalar (m/s).");
+            end
+        
+            [xmin, xmax, ymin, ymax] = parse_bounds(bounds);
+            if ~(xmax > xmin && ymax > ymin)
+                error("bounds must satisfy xmax > xmin and ymax > ymin.");
+            end
+        
+            % ---- options ----
+            seed           = get_opt(opts, "seed", []);
+            randomizeShape = get_opt(opts, "randomizeShape", true);
+            M              = get_opt(opts, "M", 18);
+            shapeJitterY   = get_opt(opts, "shapeJitterY", 0.04);
+            shapeJitterX   = get_opt(opts, "shapeJitterX", 0.012);
+            denseN         = get_opt(opts, "denseN", 4000);
+        
+            lateralStd     = get_opt(opts, "lateralStd", 0.25);
+            lateralTau     = get_opt(opts, "lateralTau", 1.5);
+            longMode       = string(get_opt(opts, "longMode", "clip"));
+        
+            if ~(isscalar(M) && M == round(M) && M >= 6)
+                error("opts.M must be an integer >= 6.");
+            end
+        
+            % ---- RNG ----
+            if ~isempty(seed)
+                rng(seed);
+            else
+                rng("shuffle");
+            end
+        
+            % ---- 1) Build a smooth baseline curve inside bounds ----
+            [x_dense, y_dense] = make_base_curve(bounds, randomizeShape, M, shapeJitterX, shapeJitterY, denseN);
+        
+            % ---- arclength parameter (meters) ----
+            s_dense = [0, cumsum(hypot(diff(x_dense), diff(y_dense)))];
+            totalLen = s_dense(end);
+        
+            % ---- 2) Decide how long the observed trajectory should be ----
+            ds = speed * dt;              % step length per sample
+            L  = ds * (N-1);              % expected traveled distance in window
+        
+            if speed == 0 || ds == 0
+                % stationary: pick a random point along the curve
+                s0 = rand() * totalLen;
+                x0 = interp1(s_dense, x_dense, s0, "linear");
+                y0 = interp1(s_dense, y_dense, s0, "linear");
+                pos = repmat([x0, y0], N, 1);
+                return;
+            end
+        
+            % choose a start arclength so that we get a segment of length ~L
+            if L <= totalLen
+                s0 = rand() * (totalLen - L);
+                s_q = s0 + (0:N-1) * ds;
+            else
+                % requested longer than available curve length
+                if longMode == "wrap"
+                    s0 = rand() * totalLen;
+                    s_q = s0 + (0:N-1) * ds;
+                    s_q = mod(s_q, totalLen);
+                else
+                    % "clip": traverse the full curve (speed effectively reduced)
+                    s_q = linspace(0, totalLen, N);
+                end
+            end
+        
+            % ---- 3) Interpolate base positions at s_q ----
+            x_base = interp1(s_dense, x_dense, s_q, "linear");
+            y_base = interp1(s_dense, y_dense, s_q, "linear");
+        
+            % ---- 4) Add realistic lateral wandering (correlated noise) ----
+            % tangent from dense curve -> interpolate at s_q -> normal direction
+            tx_dense = gradient(x_dense, s_dense);
+            ty_dense = gradient(y_dense, s_dense);
+        
+            tx = interp1(s_dense, tx_dense, s_q, "linear");
+            ty = interp1(s_dense, ty_dense, s_q, "linear");
+        
+            % normal = [-ty, tx] normalized
+            nrm = hypot(tx, ty);
+            nrm(nrm < 1e-12) = 1;
+            nx = -ty ./ nrm;
+            ny =  tx ./ nrm;
+        
+            % AR(1) correlated lateral offset: rho depends on dt and tau
+            tau = max(lateralTau, 1e-3);
+            rho = exp(-dt / tau);
+        
+            e = zeros(1, N);
+            e(1) = randn();
+            for k = 2:N
+                e(k) = rho * e(k-1) + sqrt(1 - rho^2) * randn();
+            end
+        
+            % scale to meters; also keep it reasonable relative to bounds
+            maxStd = 0.08 * min(xmax - xmin, ymax - ymin);  % safety cap
+            sigma = min(lateralStd, maxStd);
+            offset = sigma * e;
+        
+            x = x_base + offset .* nx;
+            y = y_base + offset .* ny;
+        
+            % clamp to bounds (simple safety)
+            x = min(max(x, xmin), xmax);
+            y = min(max(y, ymin), ymax);
+        
+            pos = [x(:), y(:)];
+
+        % ---------------- helpers ----------------
+        function v = get_opt(opts, name, default)
+            if isfield(opts, name) && ~isempty(opts.(name))
+                v = opts.(name);
+            else
+                v = default;
+            end
+        end
+        
+        function [xmin, xmax, ymin, ymax] = parse_bounds(bounds)
+            if isnumeric(bounds) && numel(bounds) == 4
+                b = bounds(:).';
+                xmin = b(1); xmax = b(2); ymin = b(3); ymax = b(4);
+                return;
+            end
+            if isnumeric(bounds) && isequal(size(bounds), [2, 2])
+                xmin = bounds(1,1); xmax = bounds(1,2);
+                ymin = bounds(2,1); ymax = bounds(2,2);
+                return;
+            end
+            error("bounds must be [xmin xmax ymin ymax] or [xmin xmax; ymin ymax].");
+        end
+        
+        function [x_dense, y_dense] = make_base_curve(bounds, randomizeShape, M, jitterX, jitterY, denseN)
+            [xmin, xmax, ymin, ymax] = parse_bounds(bounds);
+        
+            % base reference in normalized space (similar to your figure)
+            x_base = [0.00, 0.06, 0.14, 0.22, 0.30, 0.36, 0.42, 0.48, 0.52, 0.55, 0.58, 0.62, 0.68, 0.74, 0.82, 0.90, 0.96, 1.00];
+            y_base = [0.00, 0.06, 0.13, 0.20, 0.28, 0.33, 0.38, 0.46, 0.52, 0.60, 0.67, 0.73, 0.78, 0.82, 0.90, 0.95, 0.985, 1.00];
+        
+            % make waypoints
+            x_wp = linspace(0, 1, M);
+            if randomizeShape
+                x_wp(2:end-1) = x_wp(2:end-1) + jitterX * randn(1, M-2);
+                x_wp = sort(x_wp);
+                x_wp(1) = 0; x_wp(end) = 1;
+            end
+        
+            y_wp = interp1(x_base, y_base, x_wp, "pchip");
+        
+            if randomizeShape
+                w = sin(pi * x_wp).^1.3; % window -> 0 at ends
+                y_wp = y_wp + jitterY * w .* randn(size(y_wp));
+        
+                % enforce monotone increasing y (like the reference)
+                y_wp = cummax(y_wp);
+                y_wp = y_wp - y_wp(1);
+                if y_wp(end) <= 0
+                    y_wp = linspace(0, 1, M);
+                else
+                    y_wp = y_wp / y_wp(end);
+                end
+                y_wp = min(max(y_wp, 0), 1);
+            end
+        
+            % dense curve
+            u = linspace(0, 1, denseN);
+            v = interp1(x_wp, y_wp, u, "pchip");
+        
+            % scale to bounds
+            x_dense = xmin + u * (xmax - xmin);
+            y_dense = ymin + v * (ymax - ymin);
+        end
+        end
     end
 end

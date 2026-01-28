@@ -179,7 +179,7 @@ EKF.LocalMeasureModelJacobian = @(state) (models_ut.LocalMeasureModelJacobian_re
 EKF.MeasureModel = @(state, idx, network_topo, env) (models_ut.MeasureModel(state, idx, network_topo, env));
 EKF.MeasureModelJacobian = @(state, idx, network_topo, env) (models_ut.MeasureModelJacobian(state, idx, network_topo, env));
 
-EKF.system_noise = 1e-2 * [EKF.delta_k^4/4, 0, EKF.delta_k^3/2, 0; 
+EKF.system_noise = 1e-2* [EKF.delta_k^4/4, 0, EKF.delta_k^3/2, 0; 
                           0, EKF.delta_k^4/4, 0, EKF.delta_k^3/2; 
                           EKF.delta_k^3/2, 0, EKF.delta_k^2, 0; 
                           0, EKF.delta_k^3/2, 0, EKF.delta_k^2]; % System noise covariance
@@ -188,11 +188,10 @@ EKF.system_noise = 1e-2 * [EKF.delta_k^4/4, 0, EKF.delta_k^3/2, 0;
 %                           0, EKF.delta_k^4/4, 0, EKF.delta_k^3/2; 
 %                           EKF.delta_k^3/2, 0, EKF.delta_k^2, 0; 
 %                           0, EKF.delta_k^3/2, 0, EKF.delta_k^2]; % System noise covariance
-% EKF.system_noise = diag([env.Sigma(1,1), env.Sigma(1,1), env.Sigma(2,2), env.Sigma(2,2)]); 
-EKF.StateCovariance = diag([env.Sigma(1,1), env.Sigma(1,1), env.Sigma(2,2), env.Sigma(2,2)]); % Initial state covariance                     
-% EKF.StateCovariance = EKF.system_noise; % Initial state covariance
+% EKF.StateCovariance = diag([env.Sigma(1,1), env.Sigma(1,1), env.Sigma(2,2), env.Sigma(2,2)]); % Initial state covariance                     
+EKF.StateCovariance = EKF.system_noise; % Initial state covariance
 % EKF.StateCovariance = diag([1e6, 1e6, 1e6, 1e6]); % Initial state covariance
-EKF.StateCovariance = zeros(4,4);
+% EKF.StateCovariance = zeros(4,4);
 EKF.initial_tar_guess = [1000,1000,-14.1412,14.1412];
 
 for i = 1:network_topo.numNodes
@@ -290,6 +289,7 @@ for mc = 1:num_monte_carlo
                         % disp("Before"+ num2str(EKF.filter{i}.StateCovariance)+"\n");
                         % disp("input Measurement: Range "+current_range_meas(instance)+", Doppler "+current_doppler_meas(instance));
                         EKF.filter{i}.correct(env.pre_whit_L*[current_range_meas(instance), current_doppler_meas(instance)]');
+                        EKF.filter{i}.printStepInfo();
                         % disp("Output Measurement: Range "+mea(1)+", Doppler "+ mea(2));
                         % disp(MeasureModelJacobian(EKF.filter{i}.state,i,network_topo, env));
                         all_estimation_from_EKFs{(k-1)*NUM_CPI_PER_MEA+instance, i} = EKF.filter{i}.State; % TO DLELETE AFTER DEBUGGING

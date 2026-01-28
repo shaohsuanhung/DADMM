@@ -29,8 +29,9 @@ classdef ADMM_utils
                 % Add the whitening transformation here if needed
                 if ~isempty(varargin)
                     L = varargin{1};
-                    r_model = L(1,1) * r_model + L(1,2) * f_d_model;
-                    f_d_model = L(2,1) * r_model + L(2,2) * f_d_model;
+                    tmp = L * [r_model; f_d_model];
+                    r_model  = tmp(1);
+                    f_d_model = tmp(2);
                 end
                 for i = 1:M                    
                     % Extracting current measurements
@@ -455,13 +456,13 @@ classdef ADMM_utils
             doppler_with_error = doppler_true + doppler_noise_all;
             %---- %% Correct: Jan 6, Move whithen to algorithm part, will
             %not do it in the siganl generation part.
-            % if env.PRE_WHITEN
-            %         L = env.pre_whit_L;
-            %         r0 = range_with_error;
-            %         f0 = doppler_with_error;
-            %         range_with_error   = L(1,1)*r0 + L(1,2)*f0;
-            %         doppler_with_error = L(2,1)*r0 + L(2,2)*f0;
-            % end
+            if env.PRE_WHITEN
+                    L = env.pre_whit_L;
+                    r0 = range_with_error;
+                    f0 = doppler_with_error;
+                    range_with_error   = L(1,1)*r0 + L(1,2)*f0;
+                    doppler_with_error = L(2,1)*r0 + L(2,2)*f0;
+            end
             measurements_all_with_error = zeros(NUM_TAR,numNodes, M*2);
             measurements_all_with_error(:,:, 1:2:end) = range_with_error; % Odd index for range
             measurements_all_with_error(:,:, 2:2:end) = doppler_with_error; % Even index for Doppler
@@ -775,20 +776,20 @@ classdef ADMM_utils
                 % Set the store range value of primal residual
                 if isempty(RANGE_Xs)
                     if DEBUG
-                        disp("[Debug] Range X params converge"+norm(primal_residual_by_para(1:2))+"<"+tolerance);
+                        disp("[Debug] At "+iteration+" Range X params converge"+norm(primal_residual_by_para(1:2))+"<"+tolerance);
                     end
                     RANGE_Xs = all_estimations(1,:);
                 end
                 if isempty(RANGE_Ys)
                     if DEBUG
-                        disp("[Debug] Range Y params converge"+norm(primal_residual_by_para(1:2))+"<"+tolerance);
+                        disp("[Debug] At "+iteration+" Range Y params converge"+norm(primal_residual_by_para(1:2))+"<"+tolerance);
                     end
                     RANGE_Ys = all_estimations(2,:);
                 end
                 if not(isempty(RANGE_Xs)) && not(isempty(RANGE_Ys))
                     % Replace 
                     if DEBUG
-                        disp("[Debug] Replace Range estimations "+mean(all_estimations(1,:))+","+mean(all_estimations(2,:))+" with "+mean(RANGE_Xs)+","+mean(RANGE_Ys)+")");
+                        disp("[Debug] At "+iteration+" Replace Range estimations "+mean(all_estimations(1,:))+","+mean(all_estimations(2,:))+" with "+mean(RANGE_Xs)+","+mean(RANGE_Ys)+")");
                     end
                     all_estimations(1,:) = RANGE_Xs;
                     all_estimations(2,:) = RANGE_Ys;
@@ -799,20 +800,20 @@ classdef ADMM_utils
                 % Set the store doppler value of primal residual
                 if isempty(DOPPLER_Xs)
                     if DEBUG
-                        disp("[Debug] Doppler X params converge"+norm(primal_residual_by_para(3:4))+"<"+tolerance);
+                        disp("[Debug] At "+iteration+" Doppler X params converge"+norm(primal_residual_by_para(3:4))+"<"+tolerance);
                     end
                     DOPPLER_Xs = all_estimations(3,:);
                 end
                 if isempty(DOPPLER_Ys)
                     DOPPLER_Ys = all_estimations(4,:);
                     if DEBUG
-                        disp("[Debug] Doppler Y params converge"+norm(primal_residual_by_para(3:4))+"<"+tolerance);
+                        disp("[Debug] At "+iteration+" Doppler Y params converge"+norm(primal_residual_by_para(3:4))+"<"+tolerance);
                     end
                 end
                 if not(isempty(DOPPLER_Ys)) && not(isempty(DOPPLER_Xs))
                     % Replace 
                     if DEBUG
-                        disp("[Debug] Replace Doppler estimations "+mean(all_estimations(3,:))+","+mean(all_estimations(4,:))+" with "+mean(DOPPLER_Xs)+","+mean(DOPPLER_Ys)+")");
+                        disp("[Debug] At "+iteration+" Replace Doppler estimations "+mean(all_estimations(3,:))+","+mean(all_estimations(4,:))+" with "+mean(DOPPLER_Xs)+","+mean(DOPPLER_Ys)+")");
                     end
                     all_estimations(3,:) = DOPPLER_Xs;
                     all_estimations(4,:) = DOPPLER_Ys;

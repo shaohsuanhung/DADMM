@@ -1,4 +1,4 @@
-clc; close all; clear;
+clc; clear;
 ut = ADMM_utils;
 %TODO: 
 % 1. Write a text file to export config. / parameters setup of the run
@@ -117,7 +117,7 @@ for mc = 1:num_monte_carol
         fs = 2 * B; % Sampling frequency
         
         % This can be move out to the loop, and maybe set as env. 
-        snr_idx = 50;
+        snr_idx = 10;
         SNR_lin = 10^(snr_idx / 10);
         fprintf('SNR_db: %d dB, SNR_linear: %f\n', snr_idx, SNR_lin);
         %%% Monte carlo simulations
@@ -230,6 +230,10 @@ for mc = 1:num_monte_carol
         max_iterations = 1e5;
         c_penalty = [10^2, 10^2, 3*5, 3*5]; % For SNR 50dB
         initial_values = repmat([1000, 1000, 10, 10]', 1,numNodes);
+        initival_values = zeros(4,10);
+        % for i = 1:10
+        %     initial_values(:,i) = ([1000,1000,10,10] - [network_topo.radar_pos(i,1),network_topo.radar_pos(i,2),0,0])';
+        % end
         Nu = cell(1, numNodes);
         Nu_prev = cell(1, numNodes);
         update_z = cell(1, numNodes);
@@ -384,22 +388,22 @@ fig_ut = make_figs(network_topo.numNodes);
 %-- Plot covergence of ADMM across all nodes
 fig_ut.plot_converge_across_node(all_estimations_every_iter,true_params,network_topo);
 
-% %-- Plot dual & primal residual
-% fig_ut.plot_dual_primal_residual(dual_residual_all,primal_residual_CR, all_estimations_every_iter_CR,laplacian_matrix_CR,network_topo);
-% 
-% %-- 
-% node_to_show = 3;
-% fig_ut.plot_specific_node_converg(node_to_show,com_rad_CR,laplacian_matrix_CR,all_estimations_every_iter_CR,estimated_params_CA,network_topo,true_params);
-% fig_ut.plot_sepcific_node_error_converg(all_estimations_every_iter_mc,estimates_mc_CA,direction_mc,true_params_mc);
-% 
-% %-- 
-% fig_ut.plot_MSE_error(direction_mc,all_estimations_every_iter_mc,true_params_mc);
-% 
-% %-- Plot measurement errors of all neighhbors
-% fig_ut.plot_errors_all_neighbors(com_rad_CR, laplacian_matrix_CR, all_estimations_every_iter_CR, estimated_params_CA,network_topo,true_params);
-% 
-% %-- 
-% fig_ut.plot_MSE_for_all_neightbors(com_rad_CR,laplacian_matrix_CR,estimated_params_CA,all_estimations_every_iter_CR,true_params,network_topo);
+%-- Plot dual & primal residual
+fig_ut.plot_dual_primal_residual(dual_residual_all,primal_residual_CR, all_estimations_every_iter_CR,laplacian_matrix_CR,network_topo);
+
+%-- 
+node_to_show = 3;
+fig_ut.plot_specific_node_converg(node_to_show,com_rad_CR,laplacian_matrix_CR,all_estimations_every_iter_CR,estimated_params_CA,network_topo,true_params);
+fig_ut.plot_sepcific_node_error_converg(all_estimations_every_iter_mc,estimates_mc_CA,direction_mc,true_params_mc);
+
+%-- 
+fig_ut.plot_MSE_error(direction_mc,all_estimations_every_iter_mc,true_params_mc);
+
+%-- Plot measurement errors of all neighhbors
+fig_ut.plot_errors_all_neighbors(com_rad_CR, laplacian_matrix_CR, all_estimations_every_iter_CR, estimated_params_CA,network_topo,true_params);
+
+%-- 
+fig_ut.plot_MSE_for_all_neightbors(com_rad_CR,laplacian_matrix_CR,estimated_params_CA,all_estimations_every_iter_CR,true_params,network_topo);
 
 %--
-% fig_ut.plot_MSE_error_compare_DA_DS(direction_mc,all_estimations_every_iter_mc,estimates_mc_CA, true_params_mc);
+fig_ut.plot_MSE_error_compare_DA_DS(direction_mc,all_estimations_every_iter_mc,estimates_mc_CA, true_params_mc);

@@ -29,8 +29,9 @@ classdef ADMM_utils
                 % Add the whitening transformation here if needed
                 if ~isempty(varargin)
                     L = varargin{1};
-                    r_model = L(1,1) * r_model + L(1,2) * f_d_model;
-                    f_d_model = L(2,1) * r_model + L(2,2) * f_d_model;
+                     tmp = L * [r_model; f_d_model];
+                    r_model  = tmp(1);
+                    f_d_model = tmp(2);
                 end
                 for i = 1:M                    
                     % Extracting current measurements
