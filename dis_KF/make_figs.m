@@ -497,9 +497,10 @@ classdef make_figs
             set(gcf,'Color','white');
             set(gca,'FontSize',30);
             hold on;
-            plot(true_trajectory(1, :, 1), true_trajectory(1, :, 2), '--ok', 'LineWidth', 0.1, 'DisplayName', 'True Trajectory');
+            plot(true_trajectory(1, :, 1), true_trajectory(1, :, 2), '--ok', 'LineWidth', 0.5, 'DisplayName', 'True Trajectory');
             plot(network_topo.radar_pos(:,1), network_topo.radar_pos(:,2), 'r.', 'MarkerSize', 50, 'DisplayName', 'Sensor Nodes');
             % plot(true_trajectory(1, 1:size(true_trajectory,2)-64, 1),true_trajectory(1, 1:size(true_trajectory,2)-64, 2), '-r', 'LineWidth', 1, 'DisplayName', 'Ground truth location');
+            % plot(estimated_trajectory(1,:), estimated_trajectory(2,:), 'b.', 'LineWidth', 2, 'DisplayName', 'Estimated Trajectory','MarkerSize',15);
             plot(estimated_trajectory(1,:), estimated_trajectory(2,:), '--ob', 'LineWidth', 2, 'DisplayName', 'Estimated Trajectory');
 
             % Plot communication link
@@ -535,10 +536,11 @@ classdef make_figs
             set(gcf,'Color','white');
             % set(gca,'FontSize',40);
             t = tiledlayout(2,2);
-            % t.FontSize = 40
             for param = 1:4
                 % subplot(2, 2, param);
                 ax = nexttile;
+                ax.XAxis.FontSize = 20;
+                ax.YAxis.FontSize = 20;
                 hold on;  % Allows multiple plots on the same axes
             
                 % Plot estimations for each node
@@ -555,7 +557,7 @@ classdef make_figs
                 
             
                 hold off;
-                hx = xlabel('Optimization iteration');
+                hx = xlabel('Consensus iteration');
                 % hy = ylabel([obj.labels_params{param} 'estimates']);
                 % hy = ylabel(['MSE of ' obj.labels_params{param} '$\sum_{n}(\hat{\boldsymbol{\theta}} - \boldsymbol{\theta})$'],'Interpreter','latex');
                 hy = ylabel(['MSE of ' obj.labels_params{param}],'Interpreter','latex');

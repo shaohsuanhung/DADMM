@@ -290,13 +290,34 @@ classdef ADMM_utils
             
         end
     
+        %% Posterior CRLB
+        function crlb = calculateBCRLB(true_params, radar_positions, numNodes, M, lambda, Sigma,Q)
+            DEBUG = true;
+            Q_inv = inv(Q);
+            FIM = ADMM_utils.calculateFIM(true_params, radar_positions, numNodes, M, lambda, Sigma, Q);
+            crlb = inv(FIM + numNodes*Q_inv);
+
+            if DEBUG
+                disp('Fisher Information Matrix (FIM):');
+                disp(FIM);
+            end
+        end
+
+        function poscrlb = calculatePCRLB(true_params, radar_positions, numNodes, M, lambda, Sigma, postcrlb_prev,F, Q, R)
+            FIM = ADMM_utils.calculateFIM(true_params, radar_positions, numNodes, M, lambda, Sigma, Q);
+            pos = FIM +  inv(F*postcrlb_prev*F' + inv(R));
+            poscrlb = inv(pos);
+        end
         %% Fisher Information Matrix (FIM) calculation
-        function FIM = calculateFIM(true_params, radar_positions, numNodes, M, lambda, Sigma)
+        function FIM = calculateFIM(true_params, radar_positions, numNodes, M, lambda, Sigma,varargin)
             x_tar = true_params(1);
             y_tar = true_params(2);
             v_x = true_params(3);
             v_y = true_params(4);
-        
+            if numel(varargin) >= 1
+                Q = varargin{1};   % Another covariance matrix for the state, which is used for PCRLB calculation
+                inv_Q = inv(Q);
+            end
             FIM = zeros(4, 4);
             Sigma_inv = inv(Sigma);  % Using the smaller Sigma meant for single measurements
         
@@ -326,7 +347,14 @@ classdef ADMM_utils
                     J_i = [dr_dx, dr_dy, dr_dvx, dr_dvy; df_dx, df_dy, df_dvx, df_dvy];
         
                     % Update FIM
-                    FIM = FIM + J_i'* Sigma_inv * J_i;
+                    if numel(varargin) >= 1
+                        pos_cov = J_i * Q * J_i';
+                        % Sigma_pos = Sigma_inv - Sigma_inv*J_i(Q_inv + J_i'*Sigma_inv*J_i)\(J_i')*Sigma_inv;
+                        Sigma_pos = inv(Sigma_inv + inv(pos_cov));
+                    else
+                        Sigma_pos = Sigma_inv;
+                    end
+                    FIM = FIM + J_i'* (Sigma_pos) * J_i;
                 end
             end
         end

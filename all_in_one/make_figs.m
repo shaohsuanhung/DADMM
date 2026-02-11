@@ -90,6 +90,8 @@ classdef make_figs
             for param = 1:4
                 % subplot(2, 2, param);
                 ax = nexttile;
+                ax.XAxis.FontSize = 20;
+                ax.YAxis.FontSize = 20;
                 hold on;  % Allows multiple plots on the same axes
             
                 % Plot estimations for each node

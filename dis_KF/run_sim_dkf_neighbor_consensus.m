@@ -8,8 +8,8 @@ PRE_WHITEN  = true;   % 你要 pre-whiten：在 dkf_neighbor_update 內一致處
 
 %% ---------------- P1: Simulation parameters ----------------
 NUM_CPI_PER_MEA = 64;
-TRACK_TIME      = 25;
-dt              = 1e-3;
+TRACK_TIME      = 12;
+dt              = 1e-2;
 NUM_TAR = 1;
 
 
@@ -32,6 +32,16 @@ Results.true_params = cell(1,TRACK_TIME);      % In each cell (time stemp), stor
 Results.estimations_CA = cell(1,TRACK_TIME);   % In each cell (time stemp), store the estimation results from centralized approach (cell: 1 x 4)
 Results.convg_iter = cell(1,TRACK_TIME);
 all_tracking_params = cell(NUM_TAR, TRACK_TIME);
+
+% TOBO correct 
+Results.primal_residauls_raw = cell(1,NUM_CPI_PER_MEA*TRACK_TIME); % In each cell (time stemp), store the primal residuals (cell: 1 x # iteration of opt.) 
+Results.dual_residauls_raw = cell(1,NUM_CPI_PER_MEA*TRACK_TIME);   % In each cell (time stemp), store the dual residuals (cell: 1 x # iteration of opt.)
+Results.estimations_DA_raw = cell(1,NUM_CPI_PER_MEA*TRACK_TIME);      % In each cell (time stemp), store the estimation results (cell: 4 x 10 x # iteration of opt.)
+Results.true_params_raw = cell(1,NUM_CPI_PER_MEA*TRACK_TIME);      % In each cell (time stemp), store the estimation results (cell: 1 x 4)
+Results.estimations_CA_raw = cell(1,NUM_CPI_PER_MEA*TRACK_TIME);   % In each cell (time stemp), store the estimation results from centralized approach (cell: 1 x 4)
+Results.convg_iter_raw = cell(1,NUM_CPI_PER_MEA*TRACK_TIME);
+all_tracking_params_raw = cell(NUM_TAR, NUM_CPI_PER_MEA*TRACK_TIME);
+
 %% ---------------- Target ----------------
 target.initial_position = [20, -20];
 target.speed = 20;
@@ -107,7 +117,7 @@ x_dkf = cell(1, network_topo.numNodes);
 P_dkf = cell(1, network_topo.numNodes);
 
 % global state as initial
-% x0 = [20; -20; -14.1412; 14.1412];
+x0 = [20; -20; -14.1412; 14.1412];
 x0 = [20;-20;10;10];
 % x0 = [0;0;0;0];
 for n = 1:network_topo.numNodes
@@ -117,7 +127,7 @@ end
 
 %Local state as initial-> does not work 
 % x0 = [1000;1000;10;10];
-% % x0 = [0;0;0;0];
+% x0 = [20;-20;10;10];
 % for n = 1:network_topo.numNodes
 %     x_dkf{n} = x0 - [network_topo.radar_pos(n,1);network_topo.radar_pos(n,2);0;0];
 %     P_dkf{n} = P0;
@@ -193,36 +203,63 @@ for mc = 1:num_monte_carlo
 
                 all_est{t,n} = x_dkf{n};
             end
-        end
-
-        % 3) consensus (可選)
-        % 這裡使用 DKF 的全域估計做共識
-        global_state = zeros(network_topo.numNodes, 4);
-        for n = 1:network_topo.numNodes
-            global_state(n,:) = x_dkf{n}.';
-        end
-        global_state = models_ut.local2global(network_topo.radar_pos,global_state);
-
-        if exist('consensus','file') == 2
-            [estimated_params, estimated_params_hist, ~, ~, ~, diff_hist] = consensus(global_state, network_topo.adj_matrix);
-            fprintf("Burst %d consensus diff(end)=%.3e\n", kBurst, diff_hist(end));
-            if kBurst == 20
-                snapshot= estimated_params_hist;
-                snapshot = permute(snapshot,[2,1,3]);
-                snapshot_true = [19,-19,-8.75,8.62];
-                snapshot_ctrl   = [19,-19,-8.75,8.62];
+            % 3) consensus (可選)
+            % 這裡使用 DKF 的全域估計做共識 at erevy time step
+            global_state = zeros(network_topo.numNodes, 4);
+            for n = 1:network_topo.numNodes
+                global_state(n,:) = x_dkf{n}.';
             end
-        else
-            estimated_params = mean(global_state, 1);
+            % global_state = models_ut.local2global(network_topo.radar_pos,global_state);
+
+            if exist('consensus','file') == 2
+                [estimated_params, estimated_params_hist, ~, ~, ~, diff_hist] = consensus(global_state, network_topo.adj_matrix);
+                fprintf("Burst %d consensus diff(end)=%.3e\n", kBurst, diff_hist(end));
+                if t == NUM_CPI_PER_MEA*TRACK_TIME
+                    snapshot= estimated_params_hist;
+                    snapshot = permute(snapshot,[2,1,3]);
+                    snapshot_true = [target.target_position(1,t,1),target.target_position(1,t,2),-14.141,14.141];
+                    snapshot_ctrl   = [-88.466,88.4837,-14.16,14.162];
+                end
+            else
+                estimated_params = mean(global_state, 1);
+            end
+            % Add adaptive results
+            all_tracking_params_raw{mc,t} = estimated_params;
+            % Save log
+            Results.estimations_DA_raw{mc,t} = estimated_params;
+            Results.true_params_raw{mc,t} = [squeeze(target.target_position(1, kBurst*NUM_CPI_PER_MEA, :))', target.true_params(3), target.true_params(4)];
+            Results.convg_iter_raw{mc,t} = size(estimated_params_hist,2);
+            Results.primal_residual_raw{mc,t} = diff_hist;
         end
 
-        fprintf("Burst %d estimate: [%.2f %.2f %.2f %.2f]\n", kBurst, estimated_params);
-        all_tracking_params{1,kBurst} = estimated_params;
-        % Save log
-        Results.estimations_DA{mc,kBurst} = estimated_params;
-        Results.true_params{mc,kBurst} = [squeeze(target.target_position(1, kBurst*NUM_CPI_PER_MEA, :))', target.true_params(3), target.true_params(4)];
-        Results.convg_iter{mc,kBurst} = size(estimated_params_hist,2);
-        Results.primal_residual{mc,kBurst} = diff_hist;
+        % % 3) consensus (可選)
+        % % 這裡使用 DKF 的全域估計做共識
+        % global_state = zeros(network_topo.numNodes, 4);
+        % for n = 1:network_topo.numNodes
+        %     global_state(n,:) = x_dkf{n}.';
+        % end
+        % % global_state = models_ut.local2global(network_topo.radar_pos,global_state);
+        % 
+        % if exist('consensus','file') == 2
+        %     [estimated_params, estimated_params_hist, ~, ~, ~, diff_hist] = consensus(global_state, network_topo.adj_matrix);
+        %     fprintf("Burst %d consensus diff(end)=%.3e\n", kBurst, diff_hist(end));
+        %     if kBurst == 2
+        %         snapshot= estimated_params_hist;
+        %         snapshot = permute(snapshot,[2,1,3]);
+        %         snapshot_true = [19,-19,-8.75,8.62];
+        %         snapshot_ctrl   = [19,-19,-8.75,8.62];
+        %     end
+        % else
+        %     estimated_params = mean(global_state, 1);
+        % end
+        % 
+        % fprintf("Burst %d estimate: [%.2f %.2f %.2f %.2f]\n", kBurst, estimated_params);
+        % all_tracking_params{1,kBurst} = estimated_params;
+        % % Save log
+        % Results.estimations_DA{mc,kBurst} = estimated_params;
+        % Results.true_params{mc,kBurst} = [squeeze(target.target_position(1, kBurst*NUM_CPI_PER_MEA, :))', target.true_params(3), target.true_params(4)];
+        % Results.convg_iter{mc,kBurst} = size(estimated_params_hist,2);
+        % Results.primal_residual{mc,kBurst} = diff_hist;
         % results.estimations_CA{mc,k}   = est_CA(:).'; % Tobe implement
         % results.dual_residuals{mc,k}  = %to be implement
 
@@ -294,7 +331,8 @@ end
 
 %% -- Plotting
 % fig_ut.plot_trajectory(target.target_position,all_tracking_params);
-fig_ut.plot_trajectory_and_network(target.target_position, all_tracking_params,network_topo);
+% fig_ut.plot_trajectory_and_network(target.target_position, all_tracking_params,network_topo);
+% % fig_ut.plot_trajectory_and_network(target.target_position, all_tracking_params_raw,network_topo);
 fig_ut.plot_converge_across_node_withCentrl(snapshot,snapshot_true,network_topo,snapshot_ctrl);
 fig_ut.plot_converge_mse_across_node_withCentrl(snapshot,snapshot_true,network_topo,snapshot_ctrl);
 % A = permute(A,[2,1,3]);
