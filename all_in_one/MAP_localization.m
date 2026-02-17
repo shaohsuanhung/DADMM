@@ -11,32 +11,32 @@ PRE_WHITEN = false;         % <--- switch here
 % -----------------------
 % MC config
 % -----------------------
-num_monte_carlo = 1;
+num_monte_carlo = 20;
 seed0 = 43;
 
 % log config
-LOG_ENABLE = false;
-LOG_DIR = "./data_log";
+LOG_ENABLE = true;
+LOG_DIR = "./data_log/localization";
 RUN_NAME = "localization";
 
 
-Results = struct();
-Results.primal_residauls = cell(num_monte_carlo, 1);
+Results = struct();              
+Results.primal_residauls = cell(num_monte_carlo, 1); % Track time = 1
 Results.dual_residauls   = cell(num_monte_carlo, 1);
 Results.estimations_DA   = cell(num_monte_carlo, 1);
 Results.true_params      = cell(num_monte_carlo, 1);
 Results.convg_iter       = cell(num_monte_carlo, 1);
-Results.estimations_CA   = cell(num_monte_carlo, 1);
+Results.estimations_CA   = cell(num_monte_carlo, 1);                           
 Results.ADMM_setting   = cell(num_monte_carlo, 1);
-
+Results.CRLB           = cell(num_monte_carlo, 1);
 % -----------------------
 % Network topology
 % -----------------------
 network_topo.numNodes = 10;
 theta = linspace(0, 2*pi, network_topo.numNodes+1);
 network_topo.theta = theta(1:end-1);
-network_topo.com_rad_CR = 3000;
-network_topo.radius = 3000;
+network_topo.com_rad_CR = 20;
+network_topo.radius = 20;
 network_topo.radar_pos = network_topo.radius * [cos(network_topo.theta); sin(network_topo.theta)]';
 
 % Precompute distance matrix (optional)
@@ -55,18 +55,21 @@ options_CA = optimoptions('fmincon', 'Display', 'off', ScaleProblem=true, ...
 
 % Measurements per node (burst length)
 M = 64;
+NUM_CPI_PER_MEA = M;
 node_range = network_topo.numNodes;
 
 % Env / signal
 env.c = 3e8;
 env.lambda = env.c / 10e9;
-env.time_step = 1e-4;
+env.time_step = 1e-2;
 env.T = env.time_step / 2;
 env.B = 10e6 * ones(1, network_topo.numNodes);
 env.fs = 2 * env.B;
+dt = env.time_step;
 
 % SNR
 snr_idx = 50;
+env.snr_idx = snr_idx
 SNR_lin = 10^(snr_idx/10);
 
 % storage
@@ -83,7 +86,7 @@ for mc = 1:num_monte_carlo
     % -----------------------
     % Target
     % -----------------------
-    target.initial_position = [1000, 1000];
+    target.initial_position = [-20, -20];
     target.speed = 20;
     target.angle_degrees = (360-0).*rand(1,1) + 0; % Randomize the direction of heading
     angle_degrees =  target.angle_degrees;
@@ -123,7 +126,7 @@ for mc = 1:num_monte_carlo
         ut.gt_data_generation(range_true, doppler_true, measurements_true, target, network_topo, env, M);
 
     % -----------------------
-    % Noise covariance
+    % Noise covarianceㄈㄣiuuuuuuuuuuuuu
     % -----------------------
     range_var   = (3 * env.c^2) / (8 * pi^2 * env.B(1)^2 * SNR_lin);
     doppler_var = (3 * (env.fs(1)^2)) / (pi^2 * SNR_lin * M^3);
@@ -139,11 +142,13 @@ for mc = 1:num_monte_carlo
         U = chol(Sigma, 'upper');      % U' * U = Sigma
         pre_whit_L = inv(U');          % inv(U') * Sigma * inv(U) = I
         Sigma_eff = eye(2);
+        env.Q = diag([range_var, range_var, doppler_var, doppler_var]);
     else
         pre_whit_L = eye(2);
         Sigma_eff = Sigma;
+        env.Q = diag([1, 1, 1, 1]); % To check
     end
-
+    env.Sigma_filter  = Sigma_eff;
     % -----------------------
     % Generate noise (localization size is OK to build Sigma_big)
     % -----------------------
@@ -167,7 +172,7 @@ for mc = 1:num_monte_carlo
     % -----------------------
     % Prior (MAP) / dummy (MLE)
     % -----------------------
-    prior_mu = repmat({[1000; 1000; -14; 14]}, 1, numNodes);
+    prior_mu = repmat({[-20; -20; -14; 14]}, 1, numNodes);
     if TYPE == "MAP"
         if PRE_WHITEN
             prior_sigma = repmat({eye(4)}, 1, numNodes);
@@ -182,7 +187,7 @@ for mc = 1:num_monte_carlo
     % -----------------------
     % Centralized
     % -----------------------
-    initial_guess = [1000, 1000, 10, 10]';
+    initial_guess = [0, 0, 0, 0]';
     lb = [-inf,-inf,-inf,-inf];
     ub = [ inf, inf, inf, inf];
 
@@ -254,7 +259,8 @@ for mc = 1:num_monte_carlo
     iteration = 0;
     converged = false;
     all_estimations = zeros(4, numNodes);
-
+    tau_incr = [2.01, 2.01, 2.1, 2.1];  % Smaller increase factor
+    tau_decr = [2.01, 2.01, 2.1, 2.1];  % Smaller decrease factor
     while ~converged && iteration < max_iterations
         iteration = iteration + 1;
         if mod(iteration,100)== 0
@@ -312,6 +318,16 @@ for mc = 1:num_monte_carlo
         if primal_residual < tolerance
             converged = true;
         end
+        
+        % % % Every 30 iteration, 
+        if mod(iteration, 30) == 0
+           % Update the penalty parameter based on the residuals
+           if primal_residual < 10* dual_residual
+              c_penalty = tau_incr .* c_penalty;
+           elseif dual_residual < 10*primal_residual
+              c_penalty = c_penalty .* ((tau_decr).^(-1));
+           end
+        end
 
         % shift
         all_estimations_every_iter(:,:,iteration) = all_estimations;
@@ -329,6 +345,19 @@ for mc = 1:num_monte_carlo
     Results.convg_iter{mc,1}       = iteration;
     Results.estimations_CA{mc,1}   = est_CA;
     Results.ADMM_setting{mc,1}     = struct('tolerance', tolerance, 'max_iterations', max_iterations, 'c_penalty', c_penalty);
+    if TYPE == "MAP"
+           Results.CRLB{mc,1}      = ut.calculateBCRLB(target.true_params,...
+                                     network_topo.radar_pos, network_topo.numNodes,...
+                                     NUM_CPI_PER_MEA, env.lambda, env.Sigma_filter,env.Q);
+    elseif TYPE == "MLE"
+           FIM = ut.calculateFIM(target.true_params,...
+                                network_topo.radar_pos, network_topo.numNodes,...
+                                NUM_CPI_PER_MEA, env.lambda, env.Sigma_filter);
+
+          Results.CRLB{mc,1}         = inv(FIM);
+   else
+          error('No such TYPE setting.');
+   end
     % estimates_DA_mc{mc} = all_estimations;
     % primal_hist_mc{mc}  = primal_hist;
     % dual_hist_mc{mc}    = dual_hist;
@@ -360,7 +389,8 @@ end
         % log.primal_hist = primal_hist;
         % log.dual_hist = dual_hist;
 
-        save_json_log(LOG_DIR, RUN_NAME, log);
+        % save_json_log(LOG_DIR, RUN_NAME, log);
+        save_mat_log(LOG_DIR, RUN_NAME, log);
     end
 %% -----------------------
 % Quick plot (optional), show results of the last mc run 
@@ -392,4 +422,18 @@ fid = fopen(fn, "w");
 fwrite(fid, txt, "char");
 fclose(fid);
 fprintf("\n[log] %s\n", fn);
+end
+
+function save_mat_log(root_dir, run_name, log)
+if ~exist(root_dir, "dir"); mkdir(root_dir); end
+ts = datetime("now","Format","yyyyMMdd_HHmmss");
+folder = fullfile(root_dir, sprintf("%s_%s", run_name, string(ts)));
+mkdir(folder);
+fn = fullfile(folder, "log.mat");
+save(fn, "log");
+% txt = jsonencode(s, "PrettyPrint", true);
+% fid = fopen(fn, "w");
+% fwrite(fid, txt, "char");
+% fclose(fid);
+% fprintf("  [log] %s\n", fn);
 end
