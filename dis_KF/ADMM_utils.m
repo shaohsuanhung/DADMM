@@ -303,10 +303,24 @@ classdef ADMM_utils
             end
         end
 
-        function poscrlb = calculatePCRLB(true_params, radar_positions, numNodes, M, lambda, Sigma, postcrlb_prev,F, Q, R)
-            FIM = ADMM_utils.calculateFIM(true_params, radar_positions, numNodes, M, lambda, Sigma, Q);
-            pos = FIM +  inv(F*postcrlb_prev*F' + inv(R));
-            poscrlb = inv(pos);
+        function postcrlb = calculatePCRLB(true_params, radar_positions, numNodes, M, lambda, Sigma, Q, Jk_prev, F)
+            if Jk_prev == 0
+                FIM = ADMM_utils.calculateFIM(true_params, radar_positions, numNodes, M, lambda, Sigma, Q);
+                Jk = FIM +  numNodes*inv(Q);
+                postcrlb = inv(Jk);
+
+            else
+                FIM = ADMM_utils.calculateFIM(true_params, radar_positions, numNodes, M, lambda, Sigma, Q);
+                Jk = FIM +  inv(F*inv(Jk_prev)*F' + numNodes*Q);
+                postcrlb = inv(Jk);
+                % poscrlb = inv(pos);
+            end
+
+            DEBUG = true;
+            if DEBUG
+            disp('PCRLB:'); disp(postcrlb)
+            disp(FIM);
+            end
         end
         %% Fisher Information Matrix (FIM) calculation
         function FIM = calculateFIM(true_params, radar_positions, numNodes, M, lambda, Sigma,varargin)
@@ -316,47 +330,82 @@ classdef ADMM_utils
             v_y = true_params(4);
             if numel(varargin) >= 1
                 Q = varargin{1};   % Another covariance matrix for the state, which is used for PCRLB calculation
-                inv_Q = inv(Q);
+                Q_inv = inv(Q);
             end
             FIM = zeros(4, 4);
             Sigma_inv = inv(Sigma);  % Using the smaller Sigma meant for single measurements
         
+            % for j = 1:numNodes
+            %     x_j = radar_positions(j, 1);
+            %     y_j = radar_positions(j, 2);
+            % 
+            %     for i = 1:M
+            %         relative_position = [x_j - x_tar, y_j - y_tar];
+            %         norm_rel_pos = norm(relative_position);
+            %         r_model = norm_rel_pos;
+            %         f_d_model = dot([v_x, v_y], relative_position) / (norm_rel_pos * lambda);
+            % 
+            %         Partial derivatives of range with respect to parameters
+            %         dr_dx = (x_tar - x_j) / r_model;
+            %         dr_dy = (y_tar - y_j) / r_model;
+            %         dr_dvx = 0;
+            %         dr_dvy = 0;
+            % 
+            %         Partial derivatives of Doppler with respect to parameters
+            %         df_dvx = relative_position(1) / (norm_rel_pos * lambda);
+            %         df_dvy = relative_position(2) / (norm_rel_pos * lambda);
+            %         df_dx = -dot([v_x, v_y], relative_position) * (x_tar - x_j) / (norm_rel_pos^3 * lambda);
+            %         df_dy = -dot([v_x, v_y], relative_position) * (y_tar - y_j) / (norm_rel_pos^3 * lambda);
+            % 
+            %         Jacobian matrix for the i-th measurement
+            %         J_i = [dr_dx, dr_dy, dr_dvx, dr_dvy; df_dx, df_dy, df_dvx, df_dvy];
+            % 
+            %         Update FIM
+            %         if numel(varargin) >= 1
+            %             pos_cov = J_i * Q * J_i';
+            %             Sigma_pos = Sigma_inv - Sigma_inv*J_i(Q_inv + J_i'*Sigma_inv*J_i)\(J_i')*Sigma_inv;
+            %             Sigma_pos = inv(Sigma_inv + inv(pos_cov));
+            %         else
+            %             Sigma_pos = Sigma_inv;
+            %         end
+            %         FIM = FIM + J_i'* (Sigma_pos) * J_i;
+            %     end
+            % end
             for j = 1:numNodes
                 x_j = radar_positions(j, 1);
                 y_j = radar_positions(j, 2);
-        
-                for i = 1:M
-                    relative_position = [x_j - x_tar, y_j - y_tar];
-                    norm_rel_pos = norm(relative_position);
-                    r_model = norm_rel_pos;
-                    f_d_model = dot([v_x, v_y], relative_position) / (norm_rel_pos * lambda);
-        
-                    % Partial derivatives of range with respect to parameters
-                    dr_dx = (x_tar - x_j) / r_model;
-                    dr_dy = (y_tar - y_j) / r_model;
-                    dr_dvx = 0;
-                    dr_dvy = 0;
-        
-                    % Partial derivatives of Doppler with respect to parameters
-                    df_dvx = relative_position(1) / (norm_rel_pos * lambda);
-                    df_dvy = relative_position(2) / (norm_rel_pos * lambda);
-                    df_dx = -dot([v_x, v_y], relative_position) * (x_tar - x_j) / (norm_rel_pos^3 * lambda);
-                    df_dy = -dot([v_x, v_y], relative_position) * (y_tar - y_j) / (norm_rel_pos^3 * lambda);
-        
-                    % Jacobian matrix for the i-th measurement
-                    J_i = [dr_dx, dr_dy, dr_dvx, dr_dvy; df_dx, df_dy, df_dvx, df_dvy];
-        
-                    % Update FIM
-                    if numel(varargin) >= 1
-                        pos_cov = J_i * Q * J_i';
-                        % Sigma_pos = Sigma_inv - Sigma_inv*J_i(Q_inv + J_i'*Sigma_inv*J_i)\(J_i')*Sigma_inv;
-                        Sigma_pos = inv(Sigma_inv + inv(pos_cov));
-                    else
-                        Sigma_pos = Sigma_inv;
-                    end
-                    FIM = FIM + J_i'* (Sigma_pos) * J_i;
+                relative_position = [x_j - x_tar, y_j - y_tar];
+                norm_rel_pos = norm(relative_position);
+                r_model = norm_rel_pos;
+                f_d_model = dot([v_x, v_y], relative_position) / (norm_rel_pos * lambda);
+
+                % Partial derivatives of range with respect to parameters
+                dr_dx = (x_tar - x_j) / r_model;
+                dr_dy = (y_tar - y_j) / r_model;
+                dr_dvx = 0;
+                dr_dvy = 0;
+
+                % Partial derivatives of Doppler with respect to parameters
+                df_dvx = relative_position(1) / (norm_rel_pos * lambda);
+                df_dvy = relative_position(2) / (norm_rel_pos * lambda);
+                df_dx = -dot([v_x, v_y], relative_position) * (x_tar - x_j) / (norm_rel_pos^3 * lambda);
+                df_dy = -dot([v_x, v_y], relative_position) * (y_tar - y_j) / (norm_rel_pos^3 * lambda);
+
+                % Jacobian matrix for the i-th measurement
+                J_i = [dr_dx, dr_dy, dr_dvx, dr_dvy; df_dx, df_dy, df_dvx, df_dvy];
+
+                % Update FIM
+                if numel(varargin) >= 1
+                    pos_cov = J_i * Q * J_i';
+                    % Sigma_pos = Sigma_inv - Sigma_inv*J_i(Q_inv + J_i'*Sigma_inv*J_i)\(J_i')*Sigma_inv;
+                    Sigma_pos = inv(Sigma + (pos_cov));
+                else
+                    Sigma_pos = Sigma_inv;
                 end
-            end
+                FIM = FIM + J_i'* (Sigma_pos) * J_i;
+            end            
+
+            
         end
     
         %% Calculate adjcent matrix
@@ -901,7 +950,7 @@ classdef ADMM_utils
             seed           = get_opt(opts, "seed", []);
             randomizeShape = get_opt(opts, "randomizeShape", true);
             M              = get_opt(opts, "M", 18);
-            shapeJitterY   = get_opt(opts, "shapeJitterY", 0.04);
+            shapeJitterY   = get_opt(opts, "shapeJitterY", 0.012);
             shapeJitterX   = get_opt(opts, "shapeJitterX", 0.012);
             denseN         = get_opt(opts, "denseN", 4000);
         

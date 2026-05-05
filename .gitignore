@@ -215,3 +215,7 @@ __marimo__/
 *.json
 data_log/
 paper_writing/
+*.pdf
+synthetic_tracking_dataset/data/
+synthetic_tracking_dataset/figs/
+synthetic_tracking_dataset/docs/

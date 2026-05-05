@@ -4,11 +4,11 @@ models_ut = models;
 fig_ut   = make_figs(10);
 
 DEBUG       = true;
-PRE_WHITEN  = true;   % 你要 pre-whiten：在 dkf_neighbor_update 內一致處理
+PRE_WHITEN  = false;   % prewhiten in dkf_neighbor_update func.
 
 %% ---------------- P1: Simulation parameters ----------------
 NUM_CPI_PER_MEA = 64;
-TRACK_TIME      = 12;
+TRACK_TIME      = 10;
 dt              = 1e-2;
 NUM_TAR = 1;
 
@@ -18,49 +18,33 @@ NUM_TAR = 1;
 % -----------------------
 num_monte_carlo = 1;
 seed0 = 43;
-LOG_ENABLE = false;
-LOG_DIR = "./data_log";
-RUN_NAME = "tracking_kf";
+Log_ENABLE = false;
+Log_DIR = "./data_log";
+RUN_NAME = "kf";
 TYPE="KF";
 
-%% ---------------- Result log -------------
+%% ---------------- Result Log -------------
 Results = struct();
-Results.primal_residauls = cell(1,TRACK_TIME); % In each cell (time stemp), store the primal residuals (cell: 1 x # iteration of opt.) 
-Results.dual_residauls = cell(1,TRACK_TIME);   % In each cell (time stemp), store the dual residuals (cell: 1 x # iteration of opt.)
-Results.estimations_DA = cell(1,TRACK_TIME);      % In each cell (time stemp), store the estimation results (cell: 4 x 10 x # iteration of opt.)
-Results.true_params = cell(1,TRACK_TIME);      % In each cell (time stemp), store the estimation results (cell: 1 x 4)
-Results.estimations_CA = cell(1,TRACK_TIME);   % In each cell (time stemp), store the estimation results from centralized approach (cell: 1 x 4)
-Results.convg_iter = cell(1,TRACK_TIME);
-all_tracking_params = cell(NUM_TAR, TRACK_TIME);
+Results.primal_residauls = cell(num_monte_carlo,TRACK_TIME); % In each cell (time stemp), store the primal residuals (cell: 1 x # iteration of opt.) 
+Results.dual_residauls = cell(num_monte_carlo,TRACK_TIME);   % In each cell (time stemp), store the dual residuals (cell: 1 x # iteration of opt.)
+Results.estimations_DA = cell(num_monte_carlo,TRACK_TIME);      % In each cell (time stemp), store the estimation results (cell: 4 x 10 x # iteration of opt.)
+Results.true_params = cell(num_monte_carlo,TRACK_TIME);      % In each cell (time stemp), store the estimation results (cell: 1 x 4)
+Results.estimations_CA = cell(num_monte_carlo,TRACK_TIME);   % In each cell (time stemp), store the estimation results from centralized approach (cell: 1 x 4)
+Results.convg_iter = cell(num_monte_carlo,TRACK_TIME);
+all_tracking_params = cell(num_monte_carlo, TRACK_TIME);
+Results.estimations_DA_sigma = cell(num_monte_carlo,TRACK_TIME);
 
-% TOBO correct 
-Results.primal_residauls_raw = cell(1,NUM_CPI_PER_MEA*TRACK_TIME); % In each cell (time stemp), store the primal residuals (cell: 1 x # iteration of opt.) 
-Results.dual_residauls_raw = cell(1,NUM_CPI_PER_MEA*TRACK_TIME);   % In each cell (time stemp), store the dual residuals (cell: 1 x # iteration of opt.)
-Results.estimations_DA_raw = cell(1,NUM_CPI_PER_MEA*TRACK_TIME);      % In each cell (time stemp), store the estimation results (cell: 4 x 10 x # iteration of opt.)
-Results.true_params_raw = cell(1,NUM_CPI_PER_MEA*TRACK_TIME);      % In each cell (time stemp), store the estimation results (cell: 1 x 4)
-Results.estimations_CA_raw = cell(1,NUM_CPI_PER_MEA*TRACK_TIME);   % In each cell (time stemp), store the estimation results from centralized approach (cell: 1 x 4)
-Results.convg_iter_raw = cell(1,NUM_CPI_PER_MEA*TRACK_TIME);
-all_tracking_params_raw = cell(NUM_TAR, NUM_CPI_PER_MEA*TRACK_TIME);
+% TOBE correct (iterative) 
+Results.primal_residauls_raw = cell(num_monte_carlo,NUM_CPI_PER_MEA*TRACK_TIME); % In each cell (time stemp), store the primal residuals (cell: 1 x # iteration of opt.) 
+Results.dual_residauls_raw = cell(num_monte_carlo,NUM_CPI_PER_MEA*TRACK_TIME);   % In each cell (time stemp), store the dual residuals (cell: 1 x # iteration of opt.)
+Results.estimations_DA_raw = cell(num_monte_carlo,NUM_CPI_PER_MEA*TRACK_TIME);      % In each cell (time stemp), store the estimation results (cell: 4 x 10 x # iteration of opt.)
+Results.true_params_raw = cell(num_monte_carlo,NUM_CPI_PER_MEA*TRACK_TIME);      % In each cell (time stemp), store the estimation results (cell: 1 x 4)
+Results.estimations_CA_raw = cell(num_monte_carlo,NUM_CPI_PER_MEA*TRACK_TIME);   % In each cell (time stemp), store the estimation results from centralized approach (cell: 1 x 4)
+Results.convg_iter_raw = cell(num_monte_carlo,NUM_CPI_PER_MEA*TRACK_TIME);
+all_tracking_params_raw = cell(num_monte_carlo, NUM_CPI_PER_MEA*TRACK_TIME);
+Results.CRLB = cell(num_monte_carlo, NUM_CPI_PER_MEA*TRACK_TIME);
 
-%% ---------------- Target ----------------
-target.initial_position = [20, -20];
-target.speed = 20;
-target.angle_degrees = 135;
-target.direction = [cosd(target.angle_degrees), sind(target.angle_degrees)];
-target.true_params = [target.initial_position(1), target.initial_position(2), ...
-                      target.speed * target.direction(1), target.speed * target.direction(2)];
-
-target.target_position = zeros(NUM_TAR, NUM_CPI_PER_MEA*TRACK_TIME, 2);
-target.target_position(1,1,:) = target.initial_position;
-
-for t = 2:NUM_CPI_PER_MEA*TRACK_TIME
-    target.target_position(1,t,:) = squeeze(target.target_position(1,t-1,:))' + target.speed * target.direction * dt;
-end
-% [Try other trajectory]
-% pos = ut.gen_ref_trajectory(TRACK_TIME*NUM_CPI_PER_MEA,[-30 20 -30 25], dt,target.speed);
-% target.target_position = reshape(pos,[1, TRACK_TIME*NUM_CPI_PER_MEA,2]);
-
-%% ---------------- Network topology ----------------
+%% ---------------- Network topoLogy ----------------
 network_topo.numNodes = 10;
 theta = linspace(0,2*pi, network_topo.numNodes+1);
 network_topo.theta = theta(1:end-1);
@@ -78,6 +62,10 @@ network_topo.labels = arrayfun(@(i) sprintf("N%d", i), 1:network_topo.numNodes, 
 neighbors = ut.get_neighbors(network_topo.adj_matrix, network_topo.numNodes);
 
 %% ---------------- Environment / measurement noise ----------------
+F = [1 0 dt 0;
+     0 1 0 dt;
+     0 0 1  0;
+     0 0 0  1];
 env.c = 3e8;
 env.lambda = env.c / 10e9;
 env.time_step = dt;
@@ -90,7 +78,7 @@ env.SNR_lin = 10^(env.SNR_idx/10);
 
 env.range_var   = (3 * env.c^2) / (8 * pi^2 * env.B(1)^2 * env.SNR_lin);
 env.doppler_var = (3 * (env.fs(1)^2)) / (pi^2 * env.SNR_lin * NUM_CPI_PER_MEA^3);
-env.rho = 0;
+env.rho = 0.01;
 env.Sigma = [env.range_var,                         env.rho*env.range_var*env.doppler_var;
              env.rho*env.range_var*env.doppler_var, env.doppler_var];
 
@@ -98,12 +86,45 @@ env.PRE_WHITEN = PRE_WHITEN;
 if env.PRE_WHITEN
     % L*Sigma*L' = I
     env.pre_whit_L = inv(chol(env.Sigma,'upper')');
+    env.Sigma_filter = eye(2);
 else
     env.pre_whit_L = eye(2);
+    env.Sigma_filter = env.Sigma;
 end
 
+%% ---------------- Target ----------------
+target.initial_position = [0, 0];
+target.speed = 20;
+target.angle_degrees = 45;
+target.direction = [cosd(target.angle_degrees), sind(target.angle_degrees)];
+target.true_params = [target.initial_position(1), target.initial_position(2), ...
+                      target.speed * target.direction(1), target.speed * target.direction(2)];
+
+target.target_position = zeros(NUM_TAR, NUM_CPI_PER_MEA*TRACK_TIME, 2);
+target.target_position(1,1,:) = target.initial_position;
+
+DYNA_NOISE = false;
+
+for t = 2:NUM_CPI_PER_MEA*TRACK_TIME
+    target.target_position(1,t,:) = squeeze(target.target_position(1,t-1,:))' + target.speed * target.direction * dt;
+
+    if DYNA_NOISE 
+        target.target_position(1,t,:) = target.target_position(1,t,:)  +  0.1.*reshape((2*rand(1, 2)-1),1,1,2);
+    end
+end
+% % [Try other trajectory]
+pos = ut.gen_ref_trajectory(TRACK_TIME*NUM_CPI_PER_MEA,[-30 20 -30 25], dt,target.speed);
+target.target_position = reshape(pos,[1, TRACK_TIME*NUM_CPI_PER_MEA,2]);
+
+
+
+
+
+for mc = 1:num_monte_carlo
+    rng(seed0 + mc, "twister");
+    fprintf("\n[MC %d/%d]\n", mc, num_monte_carlo);
 %% ---------------- DKF / CV model ----------------
-Q = 1e-2 * [dt^4/4, 0,      dt^3/2, 0;
+env.Q = 1e-2 * [dt^4/4, 0,      dt^3/2, 0;
             0,      dt^4/4, 0,      dt^3/2;
             dt^3/2, 0,      dt^2,   0;
             0,      dt^3/2, 0,      dt^2];
@@ -113,12 +134,12 @@ Q = 1e-2 * [dt^4/4, 0,      dt^3/2, 0;
 P0 = diag([1e6, 1e6, 1e4, 1e4]);
 % P0 = diag([1e-6, 1e-6, 1e-6, 1e-6]);
 
-x_dkf = cell(1, network_topo.numNodes);
-P_dkf = cell(1, network_topo.numNodes);
+x_dkf = cell(NUM_TAR, network_topo.numNodes);
+P_dkf = cell(NUM_TAR, network_topo.numNodes);
 
 % global state as initial
-x0 = [20; -20; -14.1412; 14.1412];
-x0 = [20;-20;10;10];
+x0 = [-30; -30; 14.1412; 14.1412];
+% x0 = [20;-20;10;10];
 % x0 = [0;0;0;0];
 for n = 1:network_topo.numNodes
     x_dkf{n} = x0;
@@ -135,10 +156,6 @@ end
 
 
 %% ---------------- Synthetic measurements ----------------
-
-for mc = 1:num_monte_carlo
-    rng(seed0 + mc, "twister");
-    fprintf("\n[MC %d/%d]\n", mc, num_monte_carlo);
 
     M_total = NUM_CPI_PER_MEA * TRACK_TIME;
 
@@ -172,11 +189,11 @@ for mc = 1:num_monte_carlo
             x_pred_nodes = cell(1, network_topo.numNodes);
             P_pred_nodes = cell(1, network_topo.numNodes);
             for n = 1:network_topo.numNodes
-                [x_pred_nodes{n}, P_pred_nodes{n}] = dkf_predict_cv(x_dkf{n}, P_dkf{n}, dt, Q);
+                [x_pred_nodes{n}, P_pred_nodes{n}] = dkf_predict_cv(x_dkf{n}, P_dkf{n}, dt, env.Q);
                 all_pred{t,n} = x_pred_nodes{n};
             end
 
-            % 2) neighbor-augmented update at each node (LKF-II)
+            % 2) neighbor-augmented update at each node
             for n = 1:network_topo.numNodes
                 % idx_set MUST match your measurement stacking order:
                 % In your parsing function you used find(laplacian(n,:) ~= 0)
@@ -203,36 +220,51 @@ for mc = 1:num_monte_carlo
 
                 all_est{t,n} = x_dkf{n};
             end
-            % 3) consensus (可選)
+            % 3) consensus for each sample
             % 這裡使用 DKF 的全域估計做共識 at erevy time step
             global_state = zeros(network_topo.numNodes, 4);
+            global_P     = zeros(4,4,network_topo.numNodes);
             for n = 1:network_topo.numNodes
                 global_state(n,:) = x_dkf{n}.';
+                global_P(:,:,n)   = P_dkf{n};
             end
             % global_state = models_ut.local2global(network_topo.radar_pos,global_state);
 
             if exist('consensus','file') == 2
                 [estimated_params, estimated_params_hist, ~, ~, ~, diff_hist] = consensus(global_state, network_topo.adj_matrix);
+                [estimated_P, P_hist, ~, ~, ~, P_diff_hist] = consensus_covariance(global_P, network_topo.adj_matrix);
                 fprintf("Burst %d consensus diff(end)=%.3e\n", kBurst, diff_hist(end));
                 if t == NUM_CPI_PER_MEA*TRACK_TIME
                     snapshot= estimated_params_hist;
                     snapshot = permute(snapshot,[2,1,3]);
-                    snapshot_true = [target.target_position(1,t,1),target.target_position(1,t,2),-14.141,14.141];
-                    snapshot_ctrl   = [-88.466,88.4837,-14.16,14.162];
+                    snapshot_true = [target.target_position(1,t,1),target.target_position(1,t,2),14.141,14.141];
+                    snapshot_ctrl = [90.3548;90.3678;14.1235;14.1235] % Get the result of Ctrl from CKF
                 end
             else
                 estimated_params = mean(global_state, 1);
             end
             % Add adaptive results
             all_tracking_params_raw{mc,t} = estimated_params;
-            % Save log
+            % Save Log
+            true_params_k = [squeeze(target.target_position(1, t, :))', target.true_params(3), target.true_params(4)]
             Results.estimations_DA_raw{mc,t} = estimated_params;
-            Results.true_params_raw{mc,t} = [squeeze(target.target_position(1, kBurst*NUM_CPI_PER_MEA, :))', target.true_params(3), target.true_params(4)];
+            Results.estimations_DA_sigma{mc,t} = estimated_P;
+            Results.true_params_raw{mc,t} = true_params_k;
             Results.convg_iter_raw{mc,t} = size(estimated_params_hist,2);
             Results.primal_residual_raw{mc,t} = diff_hist;
+            
+            if t~=1
+                Results.CRLB{mc,t} = ut.calculatePCRLB(true_params_k,...
+                                                 network_topo.radar_pos, network_topo.numNodes,...
+                                                 NUM_CPI_PER_MEA, env.lambda, env.Sigma_filter,env.Q, inv(Results.CRLB{mc,t-1}), F);
+            else
+                Results.CRLB{mc,t} = ut.calculatePCRLB(true_params_k,...
+                                                 network_topo.radar_pos, network_topo.numNodes,...
+                                                 NUM_CPI_PER_MEA, env.lambda, env.Sigma_filter,env.Q, 0, F);
+            end
         end
 
-        % % 3) consensus (可選)
+        % % 3) consensus for each track time
         % % 這裡使用 DKF 的全域估計做共識
         % global_state = zeros(network_topo.numNodes, 4);
         % for n = 1:network_topo.numNodes
@@ -255,7 +287,7 @@ for mc = 1:num_monte_carlo
         % 
         % fprintf("Burst %d estimate: [%.2f %.2f %.2f %.2f]\n", kBurst, estimated_params);
         % all_tracking_params{1,kBurst} = estimated_params;
-        % % Save log
+        % % Save Log
         % Results.estimations_DA{mc,kBurst} = estimated_params;
         % Results.true_params{mc,kBurst} = [squeeze(target.target_position(1, kBurst*NUM_CPI_PER_MEA, :))', target.true_params(3), target.true_params(4)];
         % Results.convg_iter{mc,kBurst} = size(estimated_params_hist,2);
@@ -268,27 +300,27 @@ for mc = 1:num_monte_carlo
 
 end
 
-% JSON log per MC
-    if LOG_ENABLE
-        log = struct();
-        log.RUN_NAME = RUN_NAME;
-        log.NUM_TAR = NUM_TAR;
-        log.NUM_CPI_PER_MEA = NUM_CPI_PER_MEA;
-        log.track_time = TRACK_TIME; % localization cases
+% JSON Log per MC
+    if Log_ENABLE
+        Log = struct();
+        Log.RUN_NAME = RUN_NAME;
+        Log.NUM_TAR = NUM_TAR;
+        Log.NUM_CPI_PER_MEA = NUM_CPI_PER_MEA;
+        Log.track_time = TRACK_TIME; % localization cases
 
-        log.mc = mc;
-        log.TYPE = TYPE;
-        log.PRE_WHITEN = PRE_WHITEN;
-        log.seed = seed0 + mc;
+        Log.mc = mc;
+        Log.TYPE = TYPE;
+        Log.PRE_WHITEN = PRE_WHITEN;
+        Log.seed = seed0 + mc;
 
-        log.network_topo = network_topo;
-        log.constant = env;
-        log.target = target;
-        log.Results = Results;
+        Log.network_topo = network_topo;
+        Log.constant = env;
+        Log.target = target;
+        Log.Results = Results;
 
-        % save_json_log(LOG_DIR, RUN_NAME, log);
-        save_mat_log(LOG_DIR, RUN_NAME, log);
-        % save("test.mat","log")
+        % save_json_Log(Log_DIR, RUN_NAME, Log);
+        save_mat_Log(Log_DIR, RUN_NAME, Log);
+        % save("test.mat","Log")
     end
 
 %% ---------------- Plot quick check ----------------
@@ -328,26 +360,27 @@ if DEBUG
     title("DKF Vy"); legend('show');
 end
 
-
+    
 %% -- Plotting
 % fig_ut.plot_trajectory(target.target_position,all_tracking_params);
 % fig_ut.plot_trajectory_and_network(target.target_position, all_tracking_params,network_topo);
-% % fig_ut.plot_trajectory_and_network(target.target_position, all_tracking_params_raw,network_topo);
+fig_ut.plot_trajectory_and_network(target.target_position, all_tracking_params_raw,network_topo);
 fig_ut.plot_converge_across_node_withCentrl(snapshot,snapshot_true,network_topo,snapshot_ctrl);
-fig_ut.plot_converge_mse_across_node_withCentrl(snapshot,snapshot_true,network_topo,snapshot_ctrl);
-% A = permute(A,[2,1,3]);
+% fig_ut.plot_converge_mse_across_node_withCentrl(snapshot,snapshot_true,network_topo,snapshot_ctrl);
+
+% fig_ut.plot_setup(target.target_position,network_topo);
 % fig_ut.plot_converge_across_node_withCentrl(A,[1000,1000,-8.7,8.6],network_topo,[1000,1000,-8.7,8.62]);
 
-function save_mat_log(root_dir, run_name, log)
+function save_mat_Log(root_dir, run_name, Log)
 if ~exist(root_dir, "dir"); mkdir(root_dir); end
 ts = datetime("now","Format","yyyyMMdd_HHmmss");
 folder = fullfile(root_dir, sprintf("%s_%s", run_name, string(ts)));
 mkdir(folder);
-fn = fullfile(folder, "log.mat");
-save(fn, "log");
+fn = fullfile(folder, "Log.mat");
+save(fn, "Log");
 % txt = jsonencode(s, "PrettyPrint", true);
 % fid = fopen(fn, "w");
 % fwrite(fid, txt, "char");
 % fclose(fid);
-% fprintf("  [log] %s\n", fn);
+% fprintf("  [Log] %s\n", fn);
 end

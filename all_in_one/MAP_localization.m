@@ -2,6 +2,7 @@ run_localization_mc()
 
 function run_localization_mc()
 clc; close all;
+clear;
 
 ut = ADMM_utils;
 DEBUG = true;              % verbose
@@ -11,12 +12,12 @@ PRE_WHITEN = false;         % <--- switch here
 % -----------------------
 % MC config
 % -----------------------
-num_monte_carlo = 20;
+num_monte_carlo =1;
 seed0 = 43;
 
-% log config
+% Log config
 LOG_ENABLE = true;
-LOG_DIR = "./data_log/localization";
+LOG_DIR = "./data_log/localization/MC100_2";
 RUN_NAME = "localization";
 
 
@@ -35,8 +36,8 @@ Results.CRLB           = cell(num_monte_carlo, 1);
 network_topo.numNodes = 10;
 theta = linspace(0, 2*pi, network_topo.numNodes+1);
 network_topo.theta = theta(1:end-1);
-network_topo.com_rad_CR = 20;
-network_topo.radius = 20;
+network_topo.com_rad_CR = 3000;
+network_topo.radius = 3000;
 network_topo.radar_pos = network_topo.radius * [cos(network_topo.theta); sin(network_topo.theta)]';
 
 % Precompute distance matrix (optional)
@@ -61,16 +62,16 @@ node_range = network_topo.numNodes;
 % Env / signal
 env.c = 3e8;
 env.lambda = env.c / 10e9;
-env.time_step = 1e-2;
+env.time_step = 1e-4;
 env.T = env.time_step / 2;
 env.B = 10e6 * ones(1, network_topo.numNodes);
 env.fs = 2 * env.B;
 dt = env.time_step;
 
 % SNR
-snr_idx = 50;
-env.snr_idx = snr_idx
-SNR_lin = 10^(snr_idx/10);
+snr_idx_list = [50];
+% snr_idx_list = [50];
+SNR_lin_list = 10.^(snr_idx_list./10);
 
 % storage
 true_params_mc  = zeros(num_monte_carlo,4);
@@ -79,16 +80,19 @@ estimates_DA_mc = cell(num_monte_carlo,1);
 primal_hist_mc  = cell(num_monte_carlo,1);
 dual_hist_mc    = cell(num_monte_carlo,1);
 
+for SNR_lin = SNR_lin_list
 for mc = 1:num_monte_carlo
+    env.snr_idx = 10*log10(SNR_lin);
     rng(seed0 + mc, "twister");
     fprintf("\n[MC %d/%d]\n", mc, num_monte_carlo);
 
     % -----------------------
     % Target
     % -----------------------
-    target.initial_position = [-20, -20];
+    target.initial_position = [1000,1000];
     target.speed = 20;
-    target.angle_degrees = (360-0).*rand(1,1) + 0; % Randomize the direction of heading
+    % target.angle_degrees = (360-0).*rand(1,1) + 0; % Randomize the direction of heading
+    target.angle_degrees = [135];
     angle_degrees =  target.angle_degrees;
     target.direction = [cosd(angle_degrees), sind(angle_degrees)];
     target.true_params = [target.initial_position(1), target.initial_position(2), ...
@@ -142,11 +146,11 @@ for mc = 1:num_monte_carlo
         U = chol(Sigma, 'upper');      % U' * U = Sigma
         pre_whit_L = inv(U');          % inv(U') * Sigma * inv(U) = I
         Sigma_eff = eye(2);
-        env.Q = diag([range_var, range_var, doppler_var, doppler_var]);
+        env.Q = diag([1, 1, 1, 1]); % To check
     else
         pre_whit_L = eye(2);
         Sigma_eff = Sigma;
-        env.Q = diag([1, 1, 1, 1]); % To check
+        env.Q = diag([range_var, range_var, doppler_var, doppler_var]);
     end
     env.Sigma_filter  = Sigma_eff;
     % -----------------------
@@ -172,7 +176,7 @@ for mc = 1:num_monte_carlo
     % -----------------------
     % Prior (MAP) / dummy (MLE)
     % -----------------------
-    prior_mu = repmat({[-20; -20; -14; 14]}, 1, numNodes);
+    prior_mu = repmat({[1000; 1000; -14; 14]}, 1, numNodes);
     if TYPE == "MAP"
         if PRE_WHITEN
             prior_sigma = repmat({eye(4)}, 1, numNodes);
@@ -187,7 +191,7 @@ for mc = 1:num_monte_carlo
     % -----------------------
     % Centralized
     % -----------------------
-    initial_guess = [0, 0, 0, 0]';
+    initial_guess = [1000, 1000, 10, 10]';
     lb = [-inf,-inf,-inf,-inf];
     ub = [ inf, inf, inf, inf];
 
@@ -363,35 +367,36 @@ for mc = 1:num_monte_carlo
     % dual_hist_mc{mc}    = dual_hist;
 end
 % -----------------------
-% JSON log per MC
+% JSON Log per MC
 % -----------------------
     if LOG_ENABLE
-        log = struct();
-        log.RUN_NAME = RUN_NAME;
-        log.NUM_TAR = 1;
-        log.NUM_CPI_PER_MEA = M;
-        log.track_time = 1; % localization cases
+        Log = struct();
+        Log.RUN_NAME = RUN_NAME;
+        Log.NUM_TAR = 1;
+        Log.NUM_CPI_PER_MEA = M;
+        Log.track_time = 1; % localization cases
 
-        log.mc = mc;
-        log.TYPE = TYPE;
-        log.PRE_WHITEN = PRE_WHITEN;
-        log.seed = seed0 + mc;
+        Log.mc = mc;
+        Log.TYPE = TYPE;
+        Log.PRE_WHITEN = PRE_WHITEN;
+        Log.seed = seed0 + mc;
 
-        log.network_topo = network_topo;
-        log.constant = env;
-        log.target = target;
+        Log.network_topo = network_topo;
+        Log.constant = env;
+        Log.target = target;
         
-        log.Results = Results;
+        Log.Results = Results;
         % To be correct here in the Results
-        % log.est_CA = est_CA;
-        % log.est_DA_all_nodes = all_estimations;
-        % log.all_estimations_every_iter = all_estimations_every_iter;
-        % log.primal_hist = primal_hist;
-        % log.dual_hist = dual_hist;
+        % Log.est_CA = est_CA;
+        % Log.est_DA_all_nodes = all_estimations;
+        % Log.all_estimations_every_iter = all_estimations_every_iter;
+        % Log.primal_hist = primal_hist;
+        % Log.dual_hist = dual_hist;
 
-        % save_json_log(LOG_DIR, RUN_NAME, log);
-        save_mat_log(LOG_DIR, RUN_NAME, log);
+        % save_json_log(LOG_DIR, RUN_NAME, Log);
+        save_mat_log(LOG_DIR, RUN_NAME, Log);
     end
+end
 %% -----------------------
 % Quick plot (optional), show results of the last mc run 
 true_params = [target.initial_position(1), target.initial_position(2), target.speed * target.direction(1), target.speed * target.direction(2)];
@@ -410,30 +415,30 @@ rW = L(1,1)*r0 + L(1,2)*d0;
 dW = L(2,1)*r0 + L(2,2)*d0;
 end
 
-% ---------------- helper: json log ----------------
+% ---------------- helper: json Log ----------------
 function save_json_log(root_dir, run_name, s)
 if ~exist(root_dir, "dir"); mkdir(root_dir); end
 ts = datetime("now","Format","yyyyMMdd_HHmmss");
 folder = fullfile(root_dir, sprintf("%s_%s", run_name, string(ts)));
 mkdir(folder);
-fn = fullfile(folder, "log.json");
+fn = fullfile(folder, "Log.json");
 txt = jsonencode(s, "PrettyPrint", true);
 fid = fopen(fn, "w");
 fwrite(fid, txt, "char");
 fclose(fid);
-fprintf("\n[log] %s\n", fn);
+fprintf("\n[Log] %s\n", fn);
 end
 
-function save_mat_log(root_dir, run_name, log)
+function save_mat_log(root_dir, run_name, Log)
 if ~exist(root_dir, "dir"); mkdir(root_dir); end
 ts = datetime("now","Format","yyyyMMdd_HHmmss");
 folder = fullfile(root_dir, sprintf("%s_%s", run_name, string(ts)));
 mkdir(folder);
-fn = fullfile(folder, "log.mat");
-save(fn, "log");
+fn = fullfile(folder, "Log.mat");
+save(fn, "Log");
 % txt = jsonencode(s, "PrettyPrint", true);
 % fid = fopen(fn, "w");
 % fwrite(fid, txt, "char");
 % fclose(fid);
-% fprintf("  [log] %s\n", fn);
+% fprintf("  [Log] %s\n", fn);
 end

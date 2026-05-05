@@ -136,6 +136,3 @@ if opts.StoreHist
 end
 
 end
-
-
-

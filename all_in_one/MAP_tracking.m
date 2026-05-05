@@ -10,11 +10,11 @@ TYPE = "MAP";
 % -----------------------
 % MC config
 % -----------------------
-num_monte_carlo = 5;
+num_monte_carlo = 1;
 seed0 = 43;
 
-LOG_ENABLE = true;
-LOG_DIR = "./data_log/rMSE_SNR/debug2";
+LOG_ENABLE = false;
+LOG_DIR = "./data_log";
 RUN_NAME = "tracking";
 
 % -----------------------
@@ -34,6 +34,7 @@ Results.convg_iter       = cell(num_monte_carlo, TRACK_TIME);
 Results.estimations_CA   = cell(num_monte_carlo, TRACK_TIME);
 Results.ADMM_setting   = cell(num_monte_carlo, TRACK_TIME);
 Results.CRLB           = cell(num_monte_carlo, TRACK_TIME);
+Results.consensus_estimates = cell(num_monte_carlo, TRACK_TIME);
 % -----------------------
 % Network topology
 % -----------------------
@@ -60,7 +61,7 @@ env.T = env.time_step / 2;
 env.B = 10e6 * ones(1,network_topo.numNodes);
 env.fs = 2*env.B;
 
-env.SNR_idx = 30;
+env.SNR_idx = 50;
 env.SNR_lin = 10^(env.SNR_idx/10);
 
 env.range_var   = (3 * env.c^2) / (8 * pi^2 * env.B(1)^2 * env.SNR_lin);
@@ -94,12 +95,12 @@ end
 % Prior (for MAP in tracking)
 %%----- [Important initial value setting] ------%%
 % ADMM base config (kept similar to your script)
-prior_mu = repmat({[20; -20; 14; 14]}, 1, network_topo.numNodes);
+prior_mu = repmat({[-30; -30; 14; 14]}, 1, network_topo.numNodes);
 ADMM = ut.Initialized_ADMM(network_topo);
 ADMM.max_iter = 1000;
 ADMM.tolerance = 1e-3;
 % ADMM.initial_values = repmat([1000, 1000, 10, 10]', 1, network_topo.numNodes);
-ADMM.initial_values = repmat([0,0, 0, 0]', 1, network_topo.numNodes);
+ADMM.initial_values = repmat([-30,-30, 10, 10]', 1, network_topo.numNodes);
 state_cov = diag([env.range_var, env.range_var, env.doppler_var, env.doppler_var]);
 if PRE_WHITEN
     prior_sigma = repmat({eye(4)}, 1, network_topo.numNodes);
@@ -120,7 +121,7 @@ for mc = 1:num_monte_carlo
     % -----------------------
     % Target (deterministic trajectory per MC; you can randomize angle per MC)
     % -----------------------
-    target.initial_position = [20, -20];
+    target.initial_position = [-30, -30];
     target.speed = 20;
     target.angle_degrees = 135;
     % build trajectory
@@ -205,7 +206,7 @@ for mc = 1:num_monte_carlo
             % Centralized (Need data of the batch from all nodes: CPI x # Nodes)
             % -----------------------
             if k == 1
-                CA_initial_guess = [1000, 1000, 10, 10]';
+                CA_initial_guess = [-30, -30, 10, 10]';
             end
             lb = [-inf,-inf,-inf,-inf];
             ub = [ inf, inf, inf, inf];
@@ -320,8 +321,8 @@ for mc = 1:num_monte_carlo
                     pr = zeros(4,1);
                     dr = zeros(4,1);
                     for j = neighbors{n}
-                        primal_residual = primal_residual + norm(all_estimations(:,n) - ADMM.update_z{n}(:,j))^2;
-                        dual_residual   = dual_residual   + norm(ADMM.Nu{n}(:,j) - ADMM.Nu_prev{n}(:,j))^2;
+                        primal_residual = primal_residual + sqrt(norm(all_estimations(:,n) - ADMM.update_z{n}(:,j))^2);
+                        dual_residual   = dual_residual   + sqrt(norm(ADMM.Nu{n}(:,j) - ADMM.Nu_prev{n}(:,j))^2);
                         pr = pr + abs(all_estimations(:,n) - ADMM.update_z{n}(:,j));
                         dr = dr + abs(ADMM.Nu{n}(:,j) - ADMM.Nu_prev{n}(:,j));
                     end
@@ -359,22 +360,25 @@ for mc = 1:num_monte_carlo
             end
 
             % save per time step, after consensus ADMM. 
-            ture_params_k = [squeeze(target.target_position(tar, k*NUM_CPI_PER_MEA, :))', target.true_params(3), target.true_params(4)];
+            true_params_k = [squeeze(target.target_position(tar, k*NUM_CPI_PER_MEA, :))', target.true_params(3), target.true_params(4)];
             ADMM.final_tracking_estimation{tar,k} = mean(all_estimations,2); % you can also pick node-1 etc, since the diff. of each node shoud be very small.
+            
             
             
             Results.primal_residauls{mc,k} = ADMM.primal_residual_all; 
             Results.dual_residauls{mc,k}   = ADMM.dual_residual_all;
             Results.estimations_DA{mc,k}   = ADMM.all_estimations_every_iter;
-            Results.true_params{mc,k}      = ture_params_k;
+            Results.true_params{mc,k}      = true_params_k;
             Results.convg_iter{mc,k}       = iteration; 
             Results.estimations_CA{mc,k}   = est_CA(:).';
+            Results.consensus_estimates{mc,k} = mean(all_estimations,2);
+            Results.node_wise_cov{mc,k} = cov(all_estimations(1:2,:).','omitrows');
             if TYPE == "MAP"
-                Results.CRLB{mc,k}         = ut.calculateBCRLB(ture_params_k,...
+                Results.CRLB{mc,k}         = ut.calculateBCRLB(true_params_k,...
                                                  network_topo.radar_pos, network_topo.numNodes,...
                                                  NUM_CPI_PER_MEA, env.lambda, env.Sigma_filter,env.Q);
             elseif TYPE == "MLE"
-                FIM = ut.calculateFIM(ture_params_k,...
+                FIM = ut.calculateFIM(true_params_k,...
                                              network_topo.radar_pos, network_topo.numNodes,...
                                              NUM_CPI_PER_MEA, env.lambda, env.Sigma_filter);
                 Results.CRLB{mc,k}         = inv(FIM);
@@ -392,9 +396,11 @@ for mc = 1:num_monte_carlo
     %% plot (optional, plot random step on convg. plot to make sure results works fine)
     if mc == 1
         % fig_ut.plot_trajectory(target.target_position, ADMM.final_tracking_estimation);
+        true_param_k = [squeeze(target.target_position(tar, k*NUM_CPI_PER_MEA, :))', -target.true_params(3), -target.true_params(4)]
         fig_ut.plot_trajectory_and_network(target.target_position, ADMM.final_tracking_estimation,network_topo);
-        % fig_ut.plot_converge_across_node_withCentrl(Results.estimations_DA{mc,k},[squeeze(target.target_position(tar, k*NUM_CPI_PER_MEA, :))', target.true_params(3), target.true_params(4)],network_topo, est_CA(:).');
+        % fig_ut.plot_converge_across_node_withCentrl(Results.estimations_DA{mc,k},true_param_k,network_topo, est_CA(:).');
         % fit_ut.plot_geometry_and_target(network_topo, target.target_position);
+        fig_ut.plot_converge_mse_across_node_withCentrl(Results.estimations_DA{mc,k},true_param_k,network_topo, est_CA(:).');
     end
 end
     % JSON log per MC

@@ -40,7 +40,8 @@ classdef make_figs
         function plot_converge_across_node_withCentrl(obj,all_estimations_every_iter,true_params,network_topo, all_estimations_centrl)
             figure;
             set(gcf,'Color','white');
-            % set(gca,'FontSize',40);
+            set(gca,'FontSize',25);
+            set(gca, 'FontName', 'Times New Roman');
             t = tiledlayout(2,2);
             % t.FontSize = 40
             for param = 1:4
@@ -85,11 +86,12 @@ classdef make_figs
             figure;
             set(gcf,'Color','white');
             % set(gca,'FontSize',40);
-            t = tiledlayout(2,2);
+            t = tiledlayout(4,1);
             % t.FontSize = 40
             for param = 1:4
                 % subplot(2, 2, param);
                 ax = nexttile;
+                ax.FontName = 'Times New Roman'
                 ax.XAxis.FontSize = 20;
                 ax.YAxis.FontSize = 20;
                 hold on;  % Allows multiple plots on the same axes
@@ -111,7 +113,7 @@ classdef make_figs
                 hx = xlabel('Optimization iteration');
                 % hy = ylabel([obj.labels_params{param} 'estimates']);
                 % hy = ylabel(['MSE of ' obj.labels_params{param} '$\sum_{n}(\hat{\boldsymbol{\theta}} - \boldsymbol{\theta})$'],'Interpreter','latex');
-                hy = ylabel(['MSE of ' obj.labels_params{param}],'Interpreter','latex');
+                hy = ylabel(['rMSE of ' obj.labels_params{param}],'Interpreter','latex');
                 % hy = ylabel('$\sum_{n}$','Interpreter','latex')
                 % title([obj.labels_params{param}],'FontSize',14);
                 % legend_entries = arrayfun(@(x) ['Node ' num2str(x)], 1:network_topo.numNodes, 'UniformOutput', false);
@@ -125,16 +127,15 @@ classdef make_figs
                     xlim([0, 20]);
                 end
                 if (param == 3 | param == 4)
-                    xlim([0, 170]);
+                    xlim([0, 120]);
                 end
                 box on; grid on;
             end
             legend_entries = arrayfun(@(x) ['Node ' num2str(x)], 1:network_topo.numNodes, 'UniformOutput', false);
             % legend_entries{end+1} = 'True Parameter';
             legend_entries{end+1} = 'Centralized';
-            legend([legend_entries], 'Location', 'northeast','FontSize',12);
-            lgd = legend;
-            lgd.Layout.Tile = 'east';
+            lng = legend([legend_entries], 'Location', 'best','FontSize',12);
+            lng.NumColumns = 5;
             t.TileSpacing = 'compact';
             t.Padding = 'compact';
             
@@ -548,6 +549,81 @@ classdef make_figs
             % estimated_trajectory: cell(track_time): [4 x 1]
             estimated_trajectory = cell2mat(estimated_trajectory);
             fig = figure;
+            tiledlayout
+            nexttile
+            set(gcf,'Color','white');
+            set(gca,'FontSize',30);
+            set(gca, 'FontName', 'Times New Roman');
+            hold on;
+
+            gt = plot(true_trajectory(1, :, 1), true_trajectory(1, :, 2), '--sk', 'LineWidth', 2, 'DisplayName', 'True Trajectory', 'MarkerSize',10);
+            plot(network_topo.radar_pos(:,1), network_topo.radar_pos(:,2), 'r.', 'MarkerSize', 50, 'DisplayName', 'Sensor Nodes');
+            % plot(true_trajectory(1, 1:size(true_trajectory,2)-64, 1),true_trajectory(1, 1:size(true_trajectory,2)-64, 2), '-r', 'LineWidth', 1, 'DisplayName', 'Ground truth location');
+            pred = plot(estimated_trajectory(1,:), estimated_trajectory(2,:), '--ob', 'LineWidth', 2, 'DisplayName', 'Estimated Trajectory', 'MarkerSize',10);
+            
+
+            % Choose fewer index to visualized
+            gtstep = max(1, floor(length(true_trajectory(1,:,2))/10));
+             gt.MarkerIndices = 1:gtstep:length(true_trajectory(1,:,2));
+            
+            predstep = max(1, floor(length(estimated_trajectory(1,:))/20));
+            pred.MarkerIndices = 1:predstep:length(estimated_trajectory(1,:));
+            
+
+           
+            % Plot communication link
+            for n = 1:network_topo.numNodes 
+                neighbors_idx = find(network_topo.laplacian_matrix(n,:) == -1).'; 
+                % pairs = nchoosek(neighbors_idx,2);
+                for j = 1: size(neighbors_idx,1)
+                     if (n == 1 & j == 1)
+                         plot([network_topo.radar_pos(n,1),network_topo.radar_pos(neighbors_idx(j),1)],...
+                         [network_topo.radar_pos(n,2),network_topo.radar_pos(neighbors_idx(j),2)],...
+                         '--k','LineWidth',1.5,'DisplayName','Communication link');
+                     end
+                     plot([network_topo.radar_pos(n,1),network_topo.radar_pos(neighbors_idx(j),1)],...
+                         [network_topo.radar_pos(n,2),network_topo.radar_pos(neighbors_idx(j),2)],...
+                         '--k','LineWidth',1.5);
+                end
+            end
+
+            hold off;
+            xlabel('Position x (m)');
+            ylabel('Position y (m)');
+            % title('Target Trajectory');
+            % legend('Location', 'best');
+            objs = findobj(gca, '-property', 'DisplayName');
+            objs = objs(arrayfun(@(h) ~isempty(h.DisplayName), objs));  
+            legend(flipud(objs), 'Location', 'bestoutside');  
+            grid on;box on;ax=gca;ax.LineWidth=1.5;
+            % exportgraphics(fig, 'output.pdf', 'ContentType', 'vector');
+            
+            % 3. Build Inset plot
+            % Position 參數為 [左下角X, 左下角Y, 寬度, 高度]，範圍 0 到 1
+            axes('Position', [0.6, 0.35, 0.2, 0.2]); 
+            box on; % 加上外框
+            gt = plot(true_trajectory(1, :, 1), true_trajectory(1, :, 2), '--sk', 'LineWidth', 2, 'DisplayName', 'True Trajectory', 'MarkerSize',5);
+            hold on 
+            pred = plot(estimated_trajectory(1,:), estimated_trajectory(2,:), '--ob', 'LineWidth', 2, 'DisplayName', 'Estimated Trajectory', 'MarkerSize',5);
+            % Choose fewer index to visualized
+            gtstep = max(1, floor(length(true_trajectory(1,:,2))/100));
+             gt.MarkerIndices = 1:gtstep:length(true_trajectory(1,:,2));
+            
+            predstep = max(1, floor(length(estimated_trajectory(1,:))/20));
+            pred.MarkerIndices = 1:predstep:length(estimated_trajectory(1,:));
+            
+            % 4. 設定放大區域
+            xlim([-1, 3]); % 設定想觀察的細部 X 軸範圍
+            ylim([8, 12]); % 設定想觀察的細部 Y 軸範圍
+            title('Zoomed View');
+        end
+
+        function plot_trajectory_and_network_with_sigma(obj, true_trajectory, estimated_trajectory,network_topo)
+            % Shape of the inputs:
+            % true_trajectory: [Num target, track_time, 2]
+            % estimated_trajectory: cell(track_time): [4 x 1]
+            estimated_trajectory = cell2mat(estimated_trajectory);
+            fig = figure;
             set(gcf,'Color','white');
             set(gca,'FontSize',30);
             hold on;
@@ -581,7 +657,7 @@ classdef make_figs
             objs = objs(arrayfun(@(h) ~isempty(h.DisplayName), objs));  
             legend(flipud(objs), 'Location', 'bestoutside');  
             grid on;box on;ax=gca;ax.LineWidth=1.5;
-            exportgraphics(fig, 'output.pdf', 'ContentType', 'vector');
+            % exportgraphics(fig, 'output.pdf', 'ContentType', 'vector');
 
         end
 

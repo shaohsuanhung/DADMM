@@ -14,6 +14,7 @@ classdef make_figs
         function plot_converge_across_node(obj,all_estimations_every_iter,true_params,network_topo)
             figure;
             set(gcf,'Color','white');
+            set(gca, 'FontName', 'Times New Roman');
             set(gca,'FontSize',24);
             for param = 1:4
                 subplot(2, 2, param);
@@ -464,6 +465,7 @@ classdef make_figs
             estimated_trajectory = cell2mat(estimated_trajectory);
             figure;
             set(gcf,'Color','white');
+            set(gca, 'FontName', 'Times New Roman');
             set(gca,'FontSize',24);
             hold on;
             plot(true_trajectory(1, :, 1), true_trajectory(1, :, 2), '-.ok', 'LineWidth', 0.1, 'DisplayName', 'True Trajectory');
@@ -478,6 +480,7 @@ classdef make_figs
         function plot_geometry_and_target(obj, network_topo, target_position)
             figure;
             set(gcf,'Color','white');
+            set(gca, 'FontName', 'Times New Roman');
             set(gca,'FontSize',24);
             hold on;
             plot(network_topo.radar_pos(:,1), network_topo.radar_pos(:,2), 'rs', 'MarkerSize', 10, 'DisplayName', 'Sensor Nodes');
@@ -495,13 +498,26 @@ classdef make_figs
             estimated_trajectory = cell2mat(estimated_trajectory);
             fig = figure;
             set(gcf,'Color','white');
-            set(gca,'FontSize',30);
+            set(gca, 'FontName', 'Times New Roman');
+            set(gca,'FontSize',25);
             hold on;
-            plot(true_trajectory(1, :, 1), true_trajectory(1, :, 2), '--ok', 'LineWidth', 0.5, 'DisplayName', 'True Trajectory');
-            plot(network_topo.radar_pos(:,1), network_topo.radar_pos(:,2), 'r.', 'MarkerSize', 50, 'DisplayName', 'Sensor Nodes');
+
+
+            
+
+            gt = plot(true_trajectory(1, :, 1), true_trajectory(1, :, 2), '--sk', 'LineWidth', 2, 'DisplayName', 'True Trajectory','MarkerSize', 20);
+            plot(network_topo.radar_pos(:,1), network_topo.radar_pos(:,2), 'r.', 'MarkerSize', 40, 'DisplayName', 'Sensor Nodes');
             % plot(true_trajectory(1, 1:size(true_trajectory,2)-64, 1),true_trajectory(1, 1:size(true_trajectory,2)-64, 2), '-r', 'LineWidth', 1, 'DisplayName', 'Ground truth location');
             % plot(estimated_trajectory(1,:), estimated_trajectory(2,:), 'b.', 'LineWidth', 2, 'DisplayName', 'Estimated Trajectory','MarkerSize',15);
-            plot(estimated_trajectory(1,:), estimated_trajectory(2,:), '--ob', 'LineWidth', 2, 'DisplayName', 'Estimated Trajectory');
+            pred = plot(estimated_trajectory(1,:), estimated_trajectory(2,:), '--ob', 'LineWidth', 2, 'DisplayName', 'Estimated Trajectory','MarkerSize', 10);
+            
+
+            % Choose fewer index to visualized
+            gtstep = max(1, floor(length(true_trajectory(1,:,2))/20));
+            gt.MarkerIndices = 1:gtstep:length(true_trajectory(1,:,2));
+            
+            predstep = max(1, floor(length(estimated_trajectory(1,:))/20));
+            pred.MarkerIndices = 1:predstep:length(estimated_trajectory(1,:));
 
             % Plot communication link
             for n = 1:network_topo.numNodes 
@@ -531,11 +547,56 @@ classdef make_figs
             exportgraphics(fig, 'output.pdf', 'ContentType', 'vector');
 
         end
+        function plot_setup(obj, true_trajectory,network_topo)
+            % Shape of the inputs:
+            % true_trajectory: [Num target, track_time, 2]
+            fig = figure;
+            set(gcf,'Color','white');
+            set(gca, 'FontName', 'Times New Roman');
+            set(gca,'FontSize',15);
+            hold on;
+            h1 = plot(true_trajectory(1, :, 1), true_trajectory(1, :, 2), '--ob', 'LineWidth', 1.5, 'DisplayName', 'True Trajectory');
+            h1.MarkerSize = 5;
+            h1.MarkerIndices = 1:20:length(true_trajectory(1, :, 1));
+            plot(network_topo.radar_pos(:,1), network_topo.radar_pos(:,2), 'r.', 'MarkerSize', 50, 'DisplayName', 'Sensor Nodes');
+            % Plot communication link
+            for n = 1:network_topo.numNodes 
+                neighbors_idx = find(network_topo.laplacian_matrix(n,:) == -1).'; 
+                % pairs = nchoosek(neighbors_idx,2);
+                for j = 1: size(neighbors_idx,1)
+                     if (n == 1 & j == 1)
+                         plot([network_topo.radar_pos(n,1),network_topo.radar_pos(neighbors_idx(j),1)],...
+                         [network_topo.radar_pos(n,2),network_topo.radar_pos(neighbors_idx(j),2)],...
+                         '--k','LineWidth',1,'DisplayName','Communication Link');
+                     end
+                     plot([network_topo.radar_pos(n,1),network_topo.radar_pos(neighbors_idx(j),1)],...
+                         [network_topo.radar_pos(n,2),network_topo.radar_pos(neighbors_idx(j),2)],...
+                         '--k','LineWidth',1);
+                end
+            end
+
+            hold off;
+            % xlabel('Position x (m)');
+            % ylabel('Position y (m)');
+            % title('Target Trajectory');
+            % legend('Location', 'best');
+            set(gca,'xtick',[])
+            set(gca,'ytick',[])
+            objs = findobj(gca, '-property', 'DisplayName');
+            objs = objs(arrayfun(@(h) ~isempty(h.DisplayName), objs));  
+            legend(flipud(objs), 'Location', 'best');  
+            grid off;box on;ax=gca;ax.LineWidth=1.5;
+           
+        end
+
         function plot_converge_mse_across_node_withCentrl(obj,all_estimations_every_iter,true_params,network_topo, all_estimations_centrl)
             figure;
+            % ut = make_figs(10);
+            % figure = ut.paperFig("double");
             set(gcf,'Color','white');
+            set(gca, 'FontName', 'Times New Roman');
             % set(gca,'FontSize',40);
-            t = tiledlayout(2,2);
+            t = tiledlayout(4,1);
             for param = 1:4
                 % subplot(2, 2, param);
                 ax = nexttile;
@@ -557,7 +618,7 @@ classdef make_figs
                 
             
                 hold off;
-                hx = xlabel('Consensus iteration');
+                hx = xlabel('Consensus iteration','FontName','Times New Roman');
                 % hy = ylabel([obj.labels_params{param} 'estimates']);
                 % hy = ylabel(['MSE of ' obj.labels_params{param} '$\sum_{n}(\hat{\boldsymbol{\theta}} - \boldsymbol{\theta})$'],'Interpreter','latex');
                 hy = ylabel(['MSE of ' obj.labels_params{param}],'Interpreter','latex');
@@ -576,16 +637,68 @@ classdef make_figs
                 % if (param == 3 | param == 4)
                 %     xlim([0, 170]);
                 % end
+                if (param == 1 | param == 2)
+                    ylim([0, 1e-1]);
+                    xlim([0 33]);
+                end
+                if (param == 3 | param == 4)
+                    ylim([0, 5e-2]);
+                     xlim([0 33]);
+                end
+                
                 box on; grid on;
             end
             legend_entries = arrayfun(@(x) ['Node ' num2str(x)], 1:network_topo.numNodes, 'UniformOutput', false);
             % legend_entries{end+1} = 'True Parameter';
             legend_entries{end+1} = 'Centralized';
-            legend([legend_entries], 'Location', 'northeast','FontSize',12);
-            lgd = legend;
-            lgd.Layout.Tile = 'east';
+            lng = legend([legend_entries], 'Location', 'best','FontSize',12,'FontName','Times New Roman');
+            lng.NumColumns = 5;
             t.TileSpacing = 'compact';
             t.Padding = 'compact';
+        end
+
+
+        function [fig, ax] = paperFig(obj,kind)
+        %PAPERFIG Create a paper-ready figure with fixed physical size (cm).
+        %   [fig, ax] = paperFig()               % default: 'single'
+        %   [fig, ax] = paperFig('single')       % single-column size
+        %   [fig, ax] = paperFig('double')       % double-column size
+        
+            if nargin < 1 || isempty(kind)
+                kind = 'single';
+            end
+        
+            % normalize input for safety (older MATLAB compatible)
+            if isstring(kind), kind = char(kind); end
+            kind = lower(strtrim(kind));
+        
+            switch kind
+                case 'single'
+                    W = 8.5;  H = 6.0;   % cm
+                case 'double'
+                    W = 18.0; H = 6.5;   % cm
+                otherwise
+                    error('paperFig:BadKind','kind must be ''single'' or ''double''.');
+            end
+        
+            % Create figure with fixed size in centimeters
+            fig = figure( ...
+                'Units','centimeters', ...
+                'Position',[2 2 W H], ...
+                'Color','w', ...
+                'Renderer','painters');
+        
+            % Create axes (compatible signature)
+            ax = axes('Parent',fig);
+        
+            % Consistent margins (normalized)
+            set(ax, ...
+                'Units','normalized', ...
+                'Position',[0.12 0.16 0.85 0.78], ...
+                'FontName','Times New Roman', ...
+                'FontSize',8, ...
+                'LineWidth',0.8, ...
+                'Box','on');
         end
     end
 end

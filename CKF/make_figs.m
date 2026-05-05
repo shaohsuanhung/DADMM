@@ -453,10 +453,12 @@ classdef make_figs
             set(gcf,'Color','white');
             set(gca,'FontSize',35);
             hold on;
-            plot(true_trajectory(1, :, 1), true_trajectory(1, :, 2), '-k', 'LineWidth', 2, 'DisplayName', 'True Trajectory');
+            gt = plot(true_trajectory(1, :, 1), true_trajectory(1, :, 2), '-ok', 'LineWidth', 2, 'DisplayName', 'True Trajectory');
+            gt.MarkerIndices = 1:10:length(true_trajectory(1, :, 1));
             plot(network_topo.radar_pos(:,1), network_topo.radar_pos(:,2), 'r.', 'MarkerSize', 50, 'DisplayName', 'Sensor Nodes');
             % plot(true_trajectory(1, 1:size(true_trajectory,2)-64, 1),true_trajectory(1, 1:size(true_trajectory,2)-64, 2), '-r', 'LineWidth', 1, 'DisplayName', 'Ground truth location');
-            plot(estimated_trajectory(1,:), estimated_trajectory(2,:), '--ob', 'LineWidth', 2, 'DisplayName', 'Estimated Trajectory');
+            pred = plot(estimated_trajectory(1,:), estimated_trajectory(2,:), '--ob', 'LineWidth', 2, 'DisplayName', 'Estimated Trajectory');
+            pred.MarkerIndices = 1:10:length(estimated_trajectory(1,:));
             hold off;
             xlabel('Position x (m)');
             ylabel('Position y (m)');
@@ -464,7 +466,121 @@ classdef make_figs
             legend('Location', 'best');
             grid on;box on;ax=gca;ax.LineWidth=1.5;
             exportgraphics(fig, 'output.pdf', 'ContentType', 'vector');
-
         end
+
+        function plot_trajectory_and_network_and_mse(obj, true_trajectory, estimated_trajectory,network_topo,mse,LEGOFF,NumMark)
+            % Shape of the inputs:
+            % true_trajectory: [Num target, track_time, 2]
+            % estimated_trajectory: cell(track_time): [4 x 1]
+            estimated_trajectory = cell2mat(estimated_trajectory);
+            % ax1 = subplot(2,2,[1,3]);
+            % cla(ax1);
+            % hold(ax1,'on');
+            % 
+            % set(gcf,'Color','white');
+            % set(gca,'FontSize',25);
+            % hold on;
+            % if ~LEGOFF
+            %     gt = plot(true_trajectory(1, :, 1), true_trajectory(1, :, 2), '-k', 'LineWidth', 2, 'HandleVisibility', 'off','MarkerSize',20);
+            %     % gt.MarkerIndices = 1:floor(length(true_trajectory(1,:,1))/500):length(true_trajectory(1, :, 1));
+            %     step = max(1, floor(length(true_trajectory(1,:,2))/20));
+            %     gt.MarkerIndices = 1:step:length(true_trajectory(1,:,2));
+            %     plot(network_topo.radar_pos(:,1), network_topo.radar_pos(:,2), 'r.', 'MarkerSize', 50,'HandleVisibility', 'off');
+            %     % plot(true_trajectory(1, 1:size(true_trajectory,2)-64, 1),true_trajectory(1, 1:size(true_trajectory,2)-64, 2), '-r', 'LineWidth', 1, 'DisplayName', 'Ground truth location');
+            %     pred = plot(estimated_trajectory(1,:), estimated_trajectory(2,:), '-->b', 'LineWidth', 2, 'HandleVisibility', 'off','MarkerSize',10);
+            %     % pred.MarkerIndices = 1:floor(length(estimated_trajectory(1,:))/500):length(estimated_trajectory(1,:));
+            %     step = max(1, floor(length(estimated_trajectory(1,:))/20));
+            %     pred.MarkerIndices = 1:step:length(estimated_trajectory(1,:));
+            % else
+            %     gt = plot(true_trajectory(1, :, 1), true_trajectory(1, :, 2), '-k', 'LineWidth', 2, 'DisplayName', 'True Trajectory','MarkerSize',20);
+            %     % gt.MarkerIndices = 1:floor(length(true_trajectory(1,:,1))/500):length(true_trajectory(1, :, 1));
+            %     step = max(1, floor(length(true_trajectory(1,:,2))/20));
+            %     gt.MarkerIndices = 1:step:length(true_trajectory(1,:,2));
+            %     plot(network_topo.radar_pos(:,1), network_topo.radar_pos(:,2), 'r.', 'MarkerSize', 50, 'DisplayName', 'Sensor Nodes');
+            %     % plot(true_trajectory(1, 1:size(true_trajectory,2)-64, 1),true_trajectory(1, 1:size(true_trajectory,2)-64, 2), '-r', 'LineWidth', 1, 'DisplayName', 'Ground truth location');
+            %     pred = plot(estimated_trajectory(1,:), estimated_trajectory(2,:), '-->b', 'LineWidth', 2, 'DisplayName', 'Estimated Trajectory','MarkerSize',10);
+            %     % pred.MarkerIndices = 1:floor(length(estimated_trajectory(1,:))/500):length(estimated_trajectory(1,:));
+            %     step = max(1, floor(length(estimated_trajectory(1,:))/20));
+            %     pred.MarkerIndices = 1:step:length(estimated_trajectory(1,:));
+            % end
+            % hold off;
+            % xlabel('Position x (m)');
+            % ylabel('Position y (m)');
+            % % title('Target Trajectory');
+            % legend('Location', 'southeast');
+            % grid on;box on;ax=gca;ax.LineWidth=1.5;
+
+            ax1 = subplot(2,2,[1,3]);
+            cla(ax1);
+            hold(ax1,'on');
+            set(gcf,'Color','white');
+            set(ax1,'FontSize',25);
+            
+            % true trajectory
+            gt = plot(ax1, true_trajectory(1,:,1), true_trajectory(1,:,2), '-k', ...
+                'LineWidth', 2, 'DisplayName', 'True Trajectory');
+            
+            % sensor nodes
+            plot(ax1, network_topo.radar_pos(:,1), network_topo.radar_pos(:,2), 'r.', ...
+                'MarkerSize', 50, 'DisplayName', 'Sensor Nodes');
+            
+            % estimated trajectory line only
+            plot(ax1, estimated_trajectory(1,:), estimated_trajectory(2,:), '--b', ...
+                'LineWidth', 2, 'HandleVisibility', 'off');
+            
+            % sparse markers only
+            Nmarker = NumMark;   % 你想顯示幾個 marker
+            idx = unique(round(linspace(1, size(estimated_trajectory,2), Nmarker)));
+            
+            plot(ax1, estimated_trajectory(1,idx), estimated_trajectory(2,idx), '>b', ...
+                'LineStyle', 'none', 'MarkerSize', 8, 'DisplayName', 'Estimated Trajectory','LineWidth',2);
+
+            xlabel(ax1,'Position x (m)');
+            ylabel(ax1,'Position y (m)');
+            legend(ax1,'Location','southeast');
+            grid(ax1,'on');
+            box(ax1,'on');
+            ax1.LineWidth = 1.5;
+            hold(ax1,'off');
+
+
+
+            
+            mse_mat = mse(1,:);
+            titles = {'x', 'y', 'v_x', 'v_y'};
+            
+            T = numel(mse_mat);
+            mse_array = zeros(T,4);
+            
+            for t = 1:T
+                mse_array(t,:) = mse_mat{t};
+            end
+            
+            state_names = {'X position', 'Y position', 'v_x', 'v_y'};
+            label_fs = 25;
+            tick_fs  = 20;
+            title_fs = 20;
+            set(gcf,'Color','white');
+            for i = 1:2
+                if i == 1
+                    ax2 = subplot(2,2,2);
+                    cla(ax2);
+                    hold(ax2,'on');
+                elseif i == 2
+                    ax3 = subplot(2,2,4);
+                    cla(ax3);
+                    hold(ax3,'on');
+                end
+                plot(1:T, mse_array(:,i), 'LineWidth', 2);
+                grid on;
+                xlim([1 1920]);
+                xlabel('time $k$ (ms)', 'FontSize', label_fs,'Interpreter','latex');
+                ylabel('RMSE', 'FontSize', label_fs);
+                title(state_names{i}, 'FontSize', title_fs);
+            
+                ax = gca;
+                ax.FontSize = tick_fs;   % tick label size
+            end
+        end 
     end
 end

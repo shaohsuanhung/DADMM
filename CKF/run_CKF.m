@@ -7,26 +7,26 @@ fig_ut = make_figs(10);
 %% ===== Config =====
 DEBUG = true;
 SAVE_LOG = true;
-LOG_DIR = './data_log';
-RUN_NAME = "tracking_kf";
+LOG_DIR = "./data_log/test";
+RUN_NAME = "centralizedEKF";
 TYPE="CKF";
 
-PRE_WHITEN = true;     % <<<< switch here
+PRE_WHITEN = false;     % <<<< switch here
 RNG_SEED = 7;
 
 num_monte_carlo = 1;
 NUM_CPI_PER_MEA = 64;
-TRACK_TIME = 8;
-time_step = 1e-3;
+TRACK_TIME = 30;
+time_step = 1e-2;
 
 %% ===== Network =====
 network_topo.numNodes = 10;
 theta = linspace(0,2*pi, network_topo.numNodes+1);
 network_topo.theta = theta(1:end-1);
-network_topo.com_rad_CR = 3000;
-network_topo.radius = 3000;
+network_topo.com_rad_CR = 30;
+network_topo.radius = 30;
 network_topo.radar_pos = network_topo.radius * [cos(network_topo.theta); sin(network_topo.theta)]';
-
+network_topo.ctrl_node = network_topo.radar_pos(5,:);
 [network_topo.adj_matrix, network_topo.degree_matrix, ...
  network_topo.laplacian_matrix, network_topo.inc_matrix, ...
  network_topo.weights_matrix] = ut.calculate_all_graph_matrix( ...
@@ -34,9 +34,9 @@ network_topo.radar_pos = network_topo.radius * [cos(network_topo.theta); sin(net
 
 %% ===== Target =====
 NUM_TAR = 1;
-target.initial_position = [1000, 1000];
+target.initial_position = [-30, -30];
 target.speed = 20;
-target.angle_degrees = 135 * ones(1, num_monte_carlo);
+target.angle_degrees = 45 * ones(1, num_monte_carlo);
 
 %% ===== Environment =====
 env.c = 3e8;
@@ -67,19 +67,34 @@ F = [1 0 dt 0;
      0 1 0 dt;
      0 0 1  0;
      0 0 0  1];
-
-Q = 1e-2 * [dt^4/4, 0, dt^3/2, 0;
+% 
+env.Q = 1e-2* [dt^4/4, 0, dt^3/2, 0;
             0, dt^4/4, 0, dt^3/2;
             dt^3/2, 0, dt^2, 0;
             0, dt^3/2, 0, dt^2];
+% env.Q = diag([env.range_var, env.range_var, env.doppler_var, env.doppler_var]);
 
 %% ===== Results =====
 Results = struct();
-% Results.x_pred = cell(num_monte_carlo, TRACK_TIME*NUM_CPI_PER_MEA);
-Results.estimations_DA = cell(num_monte_carlo, TRACK_TIME*NUM_CPI_PER_MEA); % But this is CA case
-Results.P_post = cell(num_monte_carlo, TRACK_TIME*NUM_CPI_PER_MEA);
-Results.burst_est = cell(num_monte_carlo, TRACK_TIME);
-Results.gt_burst  = cell(num_monte_carlo, TRACK_TIME);
+
+Results.primal_residauls = cell(num_monte_carlo,TRACK_TIME); % Not distributed case, so would be null
+Results.dual_residauls = cell(num_monte_carlo,TRACK_TIME);   % Not distributed case, so would be null
+Results.estimations_DA = cell(num_monte_carlo,TRACK_TIME);   % Not distributed case, so would be null
+Results.estimations_DA_sigma = cell(num_monte_carlo,TRACK_TIME); % Not distributed case, so would be null
+Results.estimations_CA_sigma = cell(num_monte_carlo,TRACK_TIME); % Not distributed case, so would be null
+Results.true_params = cell(num_monte_carlo,TRACK_TIME);      % In each cell (time stemp), store the estimation results (cell: 1 x 4)
+Results.estimations_CA = cell(num_monte_carlo,TRACK_TIME);   % In each cell (time stemp), store the estimation results from centralized approach (cell: 1 x 4)
+Results.convg_iter = cell(num_monte_carlo,TRACK_TIME);       % Not distributed case, so would be null
+all_tracking_params = cell(num_monte_carlo, TRACK_TIME);
+% iterative results
+Results.primal_residauls_raw = cell(num_monte_carlo,NUM_CPI_PER_MEA*TRACK_TIME); % Not distributed case, so would be null
+Results.dual_residauls_raw = cell(num_monte_carlo,NUM_CPI_PER_MEA*TRACK_TIME);   % Not distributed case, so would be null
+Results.estimations_DA_raw = cell(num_monte_carlo,NUM_CPI_PER_MEA*TRACK_TIME);   % Not distributed case, so would be null
+Results.convg_iter_raw = cell(num_monte_carlo,NUM_CPI_PER_MEA*TRACK_TIME);       % Not distributed case, so would be null
+Results.true_params_raw = cell(num_monte_carlo,NUM_CPI_PER_MEA*TRACK_TIME);      % In each cell (time stemp), store the estimation results (cell: 1 x 4)
+Results.estimations_CA_raw = cell(num_monte_carlo,NUM_CPI_PER_MEA*TRACK_TIME);   % In each cell (time stemp), store the estimation results from centralized approach (cell: 1 x 4)
+all_tracking_params_raw = cell(num_monte_carlo, NUM_CPI_PER_MEA*TRACK_TIME);
+Results.CRLB = cell(num_monte_carlo, NUM_CPI_PER_MEA*TRACK_TIME);
 
 rng(RNG_SEED);
 
@@ -97,6 +112,10 @@ for mc = 1:num_monte_carlo
     for t = 2:NUM_CPI_PER_MEA*TRACK_TIME
         target.target_position(1,t,:) = squeeze(target.target_position(1,t-1,:))' + target.speed*target.direction*time_step;
     end
+    
+    % [Try other trajectory]
+    pos = ut.gen_ref_trajectory(TRACK_TIME*NUM_CPI_PER_MEA,[-30 20 -30 25], time_step,target.speed);
+    target.target_position = reshape(pos,[1, TRACK_TIME*NUM_CPI_PER_MEA,2]);
 
     % measurements true + noisy
     range_true = zeros(NUM_TAR,network_topo.numNodes, NUM_CPI_PER_MEA*TRACK_TIME);
@@ -110,8 +129,9 @@ for mc = 1:num_monte_carlo
         range_true, doppler_true, NUM_CPI_PER_MEA*TRACK_TIME, NUM_TAR, network_topo.numNodes, env);
 
     % init global state
-    x = [1000; 1000; -14.1412; 14.1412];
-    P = Q;
+    x = [-20; -20; 14.1412; 14.1412];
+    % P = env.Q;
+    P = diag([1e6, 1e6, 1e4, 1e4]);
 
     for k = 1:TRACK_TIME
         for instance = 1:NUM_CPI_PER_MEA
@@ -119,7 +139,7 @@ for mc = 1:num_monte_carlo
 
             % predict
             x_pred = F*x;
-            P_pred = F*P*F' + Q;
+            P_pred = F*P*F' + env.Q;
 
             % build stacked measurement z (2N x 1)
             N = network_topo.numNodes;
@@ -133,37 +153,74 @@ for mc = 1:num_monte_carlo
             [x, P] = centralized_ekf_update_stack(x_pred, P_pred, z, network_topo, env, models_ut);
             
             % all_tracking_params{1,t} = x;
-            Results.x_pred{mc,t} = x_pred;
-            Results.x_post{mc,t} = x;
-            Results.P_post{mc,t} = P;
+            % Results.x_pred{mc,t} = x_pred;
+            % Results.x_post{mc,t} = x;
+            % Results.P_post{mc,t} = P;
+            % Save log at each time stamp
+
+            true_params_k = [squeeze(target.target_position(1, t, :))', target.true_params(3), target.true_params(4)];
+            % Results.estimations_DA_raw{mc,t} = ;
+            % Results.estimations_DA_sigma{mc,t} = ;
+            Results.estimations_CA_raw{mc,t} = x;
+            Results.estimation_CA_sigma{mc,t} = P;
+            Results.true_params_raw{mc,t} = true_params_k;
+            mse{mc,t} = sqrt((Results.estimations_CA_raw{mc,t}' - Results.true_params_raw{mc,t}).^2);
+            % Results.convg_iter_raw{mc,t} = size(,2);
+            % Results.primal_residual_raw{mc,t} = diff_hist;
+            
+            % if t~=1
+            %     ctrl_node = network_topo.ctrl_node;
+            %     Results.CRLB{mc,t} = ut.calculateCtrlPCRLB(true_params_k, ctrl_node, env.lambda, env.Sigma, env.Q, inv(Results.CRLB{mc,t-1}), F);
+            % else
+            %     ctrl_node = network_topo.ctrl_node;
+            %     Results.CRLB{mc,t} = ut.calculateCtrlPCRLB(true_params_k, ctrl_node, env.lambda, env.Sigma, env.Q, 0, F);
+            % end
+
+            if t~=1
+                Results.CRLB{mc,t} = 0.1*ut.calculatePCRLB(true_params_k,...
+                                                 network_topo.radar_pos, network_topo.numNodes,...
+                                                 NUM_CPI_PER_MEA, env.lambda, env.Sigma,env.Q, inv(Results.CRLB{mc,t-1}), F);
+            else
+                Results.CRLB{mc,t} = 0.1*ut.calculatePCRLB(true_params_k,...
+                                                 network_topo.radar_pos, network_topo.numNodes,...
+                                                 NUM_CPI_PER_MEA, env.lambda, env.Sigma,env.Q, 0, F);
+            end
+
         end
 
         Results.burst_est{mc,k} = x;
         t_idx = k*NUM_CPI_PER_MEA;
         Results.gt_burst{mc,k} = [squeeze(target.target_position(1,t_idx,:))', target.true_params(3), target.true_params(4)];
-
+        
         if DEBUG
             fprintf('Burst %d done. Central EKF est=[%.2f %.2f %.2f %.2f]\n', k, x(1), x(2), x(3), x(4));
         end
     end
 
-    % Plot target only (adapt if you want to overlay estimate)
-    % fig_ut.plot_geometry_and_target(network_topo, squeeze(target.target_position(1,:,:)));
-    fig_ut.plot_trajectory_and_network(target.target_position,Results.x_post,network_topo);
+    
+end
 
-    if SAVE_LOG
-        logS = struct();
-        logS.network_topo = network_topo;
-        logS.env = env;
-        logS.target = target;
-        logS.NUM_CPI_PER_MEA = NUM_CPI_PER_MEA;
-        logS.TRACK_TIME = TRACK_TIME;
-        logS.time_step = time_step;
-        logS.PRE_WHITEN = PRE_WHITEN;
-        logS.Results = Results;
+% Plot target only (adapt if you want to overlay estimate)
+% fig_ut.plot_geometry_and_target(network_topo, squeeze(target.target_position(1,:,:)));
+% fig_ut.plot_trajectory_and_network(target.target_position,Results.estimations_CA_raw,network_topo);
+% mse_plot(mse);
+plot_gif(target.target_position,Results.estimations_CA_raw,network_topo,mse);
+if SAVE_LOG
+    Log = struct();
+    Log.RUN_NAME = RUN_NAME;
+    Log.NUM_TAR = NUM_TAR;
+    Log.NUM_CPI_PER_MEA = NUM_CPI_PER_MEA;
+    Log.TRACK_TIME = TRACK_TIME;
+    Log.mc = num_monte_carlo;
+    Log.network_topo = network_topo;
+    Log.constant = env;
+    Log.target = target;
+    Log.time_step = time_step;
+    Log.PRE_WHITEN = PRE_WHITEN;
+    Log.Results = Results;
 
-        ut.write_exp_log(LOG_DIR, sprintf('Centralized_EKF_mc%d', mc), logS);
-    end
+    % ut.write_exp_log(LOG_DIR, sprintf('Centralized_EKF_mc%d', mc), Log);
+    ut.save_mat_Log(LOG_DIR, RUN_NAME, Log);
 end
 
 %% ===== helper: centralized EKF update (stacked) =====
@@ -238,4 +295,67 @@ function [z, H] = global_meas_and_jacobian_no_whiten(x, idx, network_topo, env)
 
     H = [ drdx,    drdy,    0,      0;
           dfd_dx,  dfd_dy,  dfd_dvx, dfd_dvy ];
+end
+
+
+function mse_plot(squared_errors)
+% 3. Create the 1x4 subplots
+mse_mat = squared_errors(1,:);
+titles = {'x', 'y', 'v_x', 'v_y'};
+
+T = numel(mse_mat);
+mse_array = zeros(T,4);
+
+for t = 1:T
+    mse_array(t,:) = mse_mat{t};
+end
+
+state_names = {'X position', 'Y position', 'v_x', 'v_y'};
+
+figure();
+label_fs = 25;
+tick_fs  = 20;
+title_fs = 20;
+set(gcf,'Color','white');
+for i = 1:2
+    subplot(2,1,i);
+    plot(1:T, mse_array(:,i), 'LineWidth', 2);
+    grid on;
+    xlim([1 T]);
+    xlabel('time (ms)', 'FontSize', label_fs);
+    ylabel('rMSE', 'FontSize', label_fs);
+    title(state_names{i}, 'FontSize', title_fs);
+
+    ax = gca;
+    ax.FontSize = tick_fs;   % tick label size
+end
+
+end
+
+
+function plot_gif(target_position,estimations_CA_raw,network_topo,mse)
+filename = 'CKF_tracking.gif'
+fig_ut = make_figs(10);
+t = size(estimations_CA_raw,2);
+% k = linspace(1,t,t/250);
+k = 1:50:t;
+for i = 1:length(k)
+    % fig_ut.plot_trajectory_and_network(target_position(:,1:i,:),estimations_CA_raw(1:i),network_topo);
+    % mse_plot(mse(1:i));
+
+    if i == 1
+        fig_ut.plot_trajectory_and_network_and_mse(target_position(:,1:k(i),:),estimations_CA_raw(1:k(i)),network_topo,mse(1:k(i)),true,i)
+    else
+        fig_ut.plot_trajectory_and_network_and_mse(target_position(:,1:k(i),:),estimations_CA_raw(1:k(i)),network_topo,mse(1:k(i)),false,i)
+    end
+    frame = gcf;
+    if i == 1
+        % Build gif for the firsst frame
+        exportgraphics(frame,filename,'Append',false);
+        
+    else
+        exportgraphics(frame,filename,'Append',true);
+    end
+    drawnow;
+end 
 end
