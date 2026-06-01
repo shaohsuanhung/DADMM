@@ -1,0 +1,702 @@
+classdef make_figs
+    properties (Constant)
+        % labels_params = {'Position x ', 'Position y ', 'Velocity x ', 'Velocity y '};
+        labels_params = {'$x$', '$y$', '$v_x$', '$v_y$ '};
+    end
+    
+    properties 
+        colors;  
+    end
+    methods 
+        function obj = make_figs(numNodes)
+            obj.colors = lines(numNodes); % MATLAB function that provides distinct colors
+        end
+        function plot_converge_across_node(obj,all_estimations_every_iter,true_params,network_topo)
+            figure;
+            set(gcf,'Color','white');
+            set(gca, 'FontName', 'Times New Roman');
+            set(gca,'FontSize',24);
+            for param = 1:4
+                subplot(2, 2, param);
+                hold on;  % Allows multiple plots on the same axes
+            
+                % Plot estimations for each node
+                for node = 1:network_topo.numNodes
+                    plot(squeeze(all_estimations_every_iter(param, node, :)), 'Color', obj.colors(node, :));
+                end
+            
+                % Plot true parameter as a dotted line
+                h_true = yline(true_params(param), '--k', 'LineWidth', 1.5);
+            
+                hold off;
+                xlabel('Iterations (k)');
+                ylabel(['Parameter ' obj.labels_params{param} 'estimates']);
+                title([obj.labels_params{param}]);
+                legend_entries = arrayfun(@(x) ['Node ' num2str(x)], 1:network_topo.numNodes, 'UniformOutput', false);
+                legend_entries{end+1} = 'True Parameter';
+                legend([legend_entries], 'Location', 'northeastoutside');
+            end
+            sgtitle('Parameters of interest (\theta) Estimations');
+        end
+        % function plot_converge_across_node_withCentrl(obj,all_estimations_every_iter,true_params,network_topo, all_estimations_centrl)
+        %     figure;
+        %     set(gcf,'Color','white');
+        %     set(gca,'FontSize',24);
+        %     for param = 1:4
+        %         subplot(2, 2, param);
+        %         hold on;  % Allows multiple plots on the same axes
+        % 
+        %         % Plot estimations for each node
+        %         for node = 1:network_topo.numNodes
+        %             plot(squeeze(all_estimations_every_iter(param, node, :)), 'Color', obj.colors(node, :));
+        %         end
+        % 
+        %         % Plot true parameter as a dotted line
+        %         h_true = yline(true_params(param), '--k', 'LineWidth', 1.5);
+        %         h_centrl = yline(all_estimations_centrl(param), '--r', 'LineWidth', 1.5);
+        % 
+        %         hold off;
+        %         xlabel('Iterations');
+        %         ylabel(['Parameter ' obj.labels_params{param} 'estimates']);
+        %         title([obj.labels_params{param}]);
+        %         legend_entries = arrayfun(@(x) ['Node ' num2str(x)], 1:network_topo.numNodes, 'UniformOutput', false);
+        %         legend_entries{end+1} = 'True Parameter';
+        %         legend_entries{end+1} = 'Centralized';
+        %         legend([legend_entries], 'Location', 'northeastoutside');
+        %     end
+        %     sgtitle('Parameters of interest (\theta) Estimations');
+        % end
+        function plot_converge_across_node_withCentrl(obj,all_estimations_every_iter,true_params,network_topo, all_estimations_centrl)
+            figure;
+            set(gcf,'Color','white');
+            % set(gca,'FontSize',40);
+            t = tiledlayout(4,1);
+            % t.FontSize = 40
+            for param = 1:4
+                % subplot(2, 2, param);
+                ax = nexttile;
+                hold on;  % Allows multiple plots on the same axes
+            
+                % Plot estimations for each node
+                for node = 1:network_topo.numNodes
+                    plot(squeeze(all_estimations_every_iter(param, node, :)), 'Color', obj.colors(node, :),'LineWidth',1.5);
+                end
+            
+                % Plot true parameter as a dotted line
+                h_true = yline(true_params(param), '--k', 'LineWidth', 1.5);
+                h_centrl = yline(all_estimations_centrl(param), '--r', 'LineWidth', 1.5);
+            
+                hold off;
+                hx = xlabel('Optimization iteration');
+                hy = ylabel([obj.labels_params{param} 'estimates'],'Interpreter','latex');
+                title([obj.labels_params{param}],'FontSize',14);
+                legend_entries = arrayfun(@(x) ['Node ' num2str(x)], 1:network_topo.numNodes, 'UniformOutput', false);
+                legend_entries{end+1} = 'True Parameter';
+                legend_entries{end+1} = 'Centralized';
+                legend([legend_entries], 'Location', 'northeast','FontSize',12);
+                hx.FontSize= 18;
+                hy.FontSize= 18; 
+                if (param == 1 | param == 2)
+                    xlim([0, 50]);
+                end
+                if (param == 3 | param == 4)
+                    xlim([0, 100]);
+                end
+                box on; grid on;
+            end
+            t.TileSpacing = 'compact';
+            t.Padding = 'compact';
+            
+            % sgtitle('Parameters of interest (\theta) Estimations');
+        end
+        function plot_dual_primal_residual(obj,dual_residual_all,primal_residual_CR, all_estimations_every_iter_CR,laplacian_matrix_CR,network_topo)
+            % Dual Residual Convergence
+            figure;
+            semilogy(dual_residual_all);
+            xlabel("Iterations (k)");
+            % ylabel('|| \nu(k+1) - \nu(k)||_2^2');
+            ylabel('$\sum_{n=1}^{N} \sum_{j \in \mathrm{Neighbors}(n)} || \nu_{n|j}(k+1) - \nu{n|j}(k)||_2^2$', 'Interpreter', 'latex');
+            title('Dual Residual (s(k))');
+            
+            % Primal and Dual Convergence for various node ratio
+            numColors = length(all_estimations_every_iter_CR);  % Define number of distinct colors needed
+            colors = hsv(numColors);  % Creates a colormap with numColors distinct colors
+            
+            display_node = 1;
+            legendNames = cell(1, length(primal_residual_CR)); 
+            for i = 1:length(primal_residual_CR)
+                legendNames{i} = ['Neighbors: ', num2str(laplacian_matrix_CR{i}(display_node, display_node)), '/', num2str(network_topo.numNodes)];
+            end
+            
+            % Plot Primal Residual Convergence for various node ratios
+            figure;
+            for CR = 1:numColors
+                semilogy(primal_residual_CR{CR}, 'Color', colors(CR, :));
+                hold on;
+            end
+            xlabel('Iterations (k)');
+            ylabel('$\sum_{n=1}^{N} \sum_{j \in \mathrm{Neighbors}(n)} ||\theta_m(k+1) - \vartheta_{nj}(k+1)||_2^2$', 'Interpreter', 'latex');
+            title('Primal Residual (r(k)) for different node ratios');
+            legend(legendNames, 'Location', 'best');  % Add legend with node ratios
+
+        end
+        function plot_specific_node_converg(obj,nodeID,com_rad_CR,laplacian_matrix_CR,all_estimations_every_iter_CR,estimated_params_CA, network_topo,true_params)
+            % Plot Convergance of theta for various node ratios
+            display_node = nodeID;
+            legendNames = cell(1, length(com_rad_CR)); 
+            
+            % Construct the Node Ratio as a fraction in the format 'numerator/denominator'
+            for i = 1:length(com_rad_CR)
+                legendNames{i} = ['Neighbors: ', num2str(laplacian_matrix_CR{i}(display_node, display_node)), '/', num2str(network_topo.numNodes)];
+            end
+
+            figure;
+            for param = 1:4
+                subplot(2,2,param);
+                hold on;
+            
+                % Initialize a cell array to store plot handles
+                hPlots = cell(1, length(all_estimations_every_iter_CR) + 2); % +2 for true parameter and centralized approach
+            
+                % Plot all estimations with specific color and store handles
+                for j = 1:length(all_estimations_every_iter_CR)
+                    hPlots{j} = plot(squeeze(all_estimations_every_iter_CR{j}(param, display_node, :)), 'Color', obj.colors(j, :));        
+                end
+            
+                % Plot the centralized approach as a yline
+                hPlots{end-1} = yline(estimated_params_CA(param), 'k', 'LineWidth', 1.5, 'DisplayName', 'Centralized Approach');
+            
+                % Plot the true parameter line and store the handle
+                hPlots{end} = yline(true_params(param), '--k', 'LineWidth', 1.5, 'DisplayName', 'True Parameter');
+            
+                % Add the legend
+                legend([hPlots{:}], [legendNames, {'Centralized Approach', 'True Parameter'}]);
+            
+                hold off;
+                xlabel('Iterations (k)');
+                ylabel(['Parameter ' obj.labels_params{param} ' estimates']);
+                title([obj.labels_params{param}]);
+            
+                hold off;
+            
+            
+            end
+            
+            sgtitle({'Convergence of parameters of interest ($\theta_n$) at $n^{\mathrm{th}}$ node for different communication radius'}, 'Interpreter', 'latex');
+            % sgtitle({'Convergence of parameters of interest ($\theta_n$) at',nodeID ,'th node for different communication radius'}, 'Interpreter', 'latex');
+        end
+        function plot_sepcific_node_error_converg(obj,all_estimations_every_iter_mc,estimates_mc_CA,direction_mc,true_params_mc)
+            
+            colors_size = size(direction_mc, 1);
+            colors = hsv(colors_size);
+            legendNames = cell(1, size(direction_mc, 1)); 
+            
+            % Construct the legend names based on the rows of direction_mc
+            for i = 1:size(direction_mc, 1)
+                    % Format the direction values to two decimal places
+                    directionStr = num2str(direction_mc(i, :), '%0.2f ');
+                    legendNames{i} = ['Direction: ', directionStr];
+            end
+            
+            figure;
+            for param = 1:4
+                subplot(2,2,param);
+                hold on;
+                display_node = 1;
+                % Initialize a cell array to store plot handles
+                hPlots = cell(1, length(all_estimations_every_iter_mc)+2); % +2 for centralized approach and true parameter error line
+            
+                % Plot estimation errors with specific color and store handles
+                for j = 1:length(all_estimations_every_iter_mc)
+                    % Calculate estimation error as estimation minus true parameter
+                    errors = squeeze(all_estimations_every_iter_mc{j}{:}(param, display_node, :)) - true_params_mc(j,param);
+                    hPlots{j} = semilogy(errors, 'Color', colors(j, :));        
+                end
+            
+                % Plot the centralized approach error as a horizontal line at zero (assuming centralized approach estimates the parameter correctly)
+                hPlots{end-1} = yline(estimates_mc_CA(j,param) - true_params_mc(j,param), 'k', 'LineWidth', 1.5, 'DisplayName', 'Centralized Approach Error');
+            
+                % Plot the true parameter error line (which should be zero) and store the handle
+                hPlots{end} = yline(0, '--k', 'LineWidth', 1.5, 'DisplayName', 'Zero Error');
+            
+                % Add the legend
+                legend([hPlots{:}], [legendNames, {'Centralized Approach Error', 'Zero Error'}]);
+            
+                hold off;
+                xlabel('Iterations (k)');
+                ylabel(['Error for ' obj.labels_params{param}]);
+                title(['Error in ' obj.labels_params{param}]);
+            
+            end
+            
+            sgtitle({'Error convergence for parameters of interest ($\theta_n$) at $n^{\mathrm{th}}$ node for different communication radius'}, 'Interpreter', 'latex');
+
+        end
+        function plot_MSE_error(obj,direction_mc,all_estimations_every_iter_mc,true_params_mc)
+            % Plot MSE Error (Estimated(with neighbors ratio) - True Params).^2
+            % Plotting Errors (\hat{\theta} - \theta).^2 results
+            display_node = 1;
+            legendNames = cell(1, size(direction_mc, 1)); 
+            
+            % Construct the legend names based on the rows of direction_mc
+            for i = 1:size(direction_mc, 1)
+                    % Format the direction values to two decimal places
+                    directionStr = num2str(direction_mc(i, :), '%0.2f ');
+                    legendNames{i} = ['Direction: ', directionStr];
+            end
+            
+            figure;
+            for param = 1:4
+                subplot(2,2,param);
+                hold on;
+
+                % Initialize a cell array to store plot handles
+                hPlots = cell(1, length(all_estimations_every_iter_mc)); % +2 for centralized approach and true parameter error line
+            
+                % Plot estimation errors with specific color and store handles
+                for j = 1:length(all_estimations_every_iter_mc)
+                    % Calculate estimation error as estimation minus true parameter
+                    errors = (squeeze(all_estimations_every_iter_mc{j}{:}(param, display_node, :)) - true_params_mc(j,param)).^2;
+                    hPlots{j} = semilogy(errors, 'Color', obj.colors(j, :));        
+                end
+                set(gca, 'YScale', 'log');
+            
+                % Plot the centralized approach error as a horizontal line at zero (assuming centralized approach estimates the parameter correctly)
+            %     hPlots{end-1} = yline((estimates_mc_CA(j,param) - true_params_mc(j,param)).^2, 'k', 'LineWidth', 1.5, 'DisplayName', 'Centralized Approach Error');
+            %     
+            %     % Plot the true parameter error line (which should be zero) and store the handle
+            %     hPlots{end} = yline(0, '--k', 'LineWidth', 1.5, 'DisplayName', 'Zero Error');
+            %     
+                % Add the legend
+            %     legend([hPlots{:}], [legendNames, {'Centralized Approach Error', 'Zero Error'}]);
+                legend([hPlots{:}], legendNames);
+                hold off;
+                xlabel('Iterations (k)');
+                ylabel(['MSE for ' obj.labels_params{param}]);
+                title(['MSE in ' obj.labels_params{param}]);
+            
+            end    
+            sgtitle({'MSE convergence for parameters of interest ($\theta_n$) at $n^{\mathrm{th}}$ node for different communication radius'}, 'Interpreter', 'latex');
+        end 
+        function plot_errors_all_neighbors(obj, com_rad_CR, laplacian_matrix_CR,all_estimations_every_iter_CR, estimated_params_CA, network_topo,true_params)
+            % Plotting Errors (\hat{\theta} - \theta) results for all neighbors
+            display_node = 1;
+            numColors = length(all_estimations_every_iter_CR); 
+            colors = hsv(numColors);
+            labels_params = {'Position x', 'Position y', 'Velocity x', 'Velocity y'};
+            legendNames = cell(1, length(com_rad_CR)); 
+            
+            % Construct the Node Ratio as a fraction in the format 'numerator/denominator'
+            for i = 1:length(com_rad_CR)
+                legendNames{i} = ['Neighbors: ', num2str(laplacian_matrix_CR{i}(display_node, display_node)), '/', num2str(network_topo.numNodes)];
+            end
+            
+            figure;
+            for param = 1:4
+                subplot(2,2,param);
+                hold on;
+            
+                % Initialize a cell array to store plot handles
+                hPlots = cell(1, length(all_estimations_every_iter_CR) + 2); % +2 for centralized approach and true parameter error line
+            
+                % Plot estimation errors with specific color and store handles
+                for j = 1:length(all_estimations_every_iter_CR)
+                    % Calculate estimation error as estimation minus true parameter
+                    errors = squeeze(all_estimations_every_iter_CR{j}(param, display_node, :)) - true_params(param);
+                    hPlots{j} = semilogy(errors, 'Color', colors(j, :));        
+                end
+            
+                % Plot the centralized approach error as a horizontal line at zero (assuming centralized approach estimates the parameter correctly)
+                hPlots{end-1} = yline(estimated_params_CA(param) - true_params(param), 'k', 'LineWidth', 1.5, 'DisplayName', 'Centralized Approach Error');
+            
+                % Plot the true parameter error line (which should be zero) and store the handle
+                hPlots{end} = yline(0, '--k', 'LineWidth', 1.5, 'DisplayName', 'Zero Error');
+            
+                % Add the legend
+                legend([hPlots{:}], [legendNames, {'Centralized Approach Error', 'Zero Error'}]);
+            
+                hold off;
+                xlabel('Iterations (k)');
+                ylabel(['$(', '\hat{\theta}_n', ' - \theta)$' ], 'Interpreter', 'latex');
+                title(['For ' obj.labels_params{param}]);
+            
+            end
+            
+            sgtitle({'$\left(\hat{\theta}_n - \theta\right)$ for different neighbor nodes'}, 'Interpreter', 'latex');
+        end 
+        function plot_MSE_for_all_neightbors(obj,com_rad_CR,laplacian_matrix_CR,estimated_params_CA,all_estimations_every_iter_CR,true_params,network_topo)
+            % For MSE fo all neighbors
+            display_node = 1;
+            legendNames = cell(1, length(com_rad_CR)); 
+            
+            % Construct the Node Ratio as a fraction in the format 'numerator/denominator'
+            for i = 1:length(com_rad_CR)
+                legendNames{i} = ['Neighbors: ', num2str(laplacian_matrix_CR{i}(display_node, display_node)), '/', num2str(network_topo.numNodes)];
+            end
+            figure;
+            for param = 1:4
+                subplot(2,2,param);
+                hold on;
+            
+                % Initialize a cell array to store plot handles
+                hPlots = cell(1, length(all_estimations_every_iter_CR) + 2); % +2 for centralized approach and true parameter error line
+            
+                % Plot estimation errors with specific color and store handles
+                for j = 1:length(all_estimations_every_iter_CR)
+                    % Calculate estimation error as estimation minus true parameter
+                    errors = (squeeze(all_estimations_every_iter_CR{j}(param, display_node, :)) - true_params(param)).^2;
+                    hPlots{j} = semilogy(errors, 'Color', obj.colors(j, :));        
+                end
+            
+                % Plot the centralized approach error as a horizontal line at zero (assuming centralized approach estimates the parameter correctly)
+                hPlots{end-1} = yline((estimated_params_CA(param) - true_params(param)).^2, 'k', 'LineWidth', 1.5, 'DisplayName', 'Centralized Approach Error');
+            
+                % Plot the true parameter error line (which should be zero) and store the handle
+                hPlots{end} = yline(0, '--k', 'LineWidth', 1.5, 'DisplayName', 'Zero Error');
+            
+                % Add the legend
+                legend([hPlots{:}], [legendNames, {'Centralized Approach Error', 'Zero Error'}]);
+            
+                set(gca, 'YScale', 'log');  % Set the Y-axis to logarithmic scale
+            
+                hold off;
+                xlabel('Iterations (k)');
+                ylabel(['$(', '\hat{\theta}_n', ' - \theta)^2$'], 'Interpreter', 'latex');
+                title(['For ' obj.labels_params{param}]);
+            
+                % The rest of your code for the inset plots
+                % Ensure to set 'YScale' to 'log' for the inset axes if needed
+            end
+            
+            sgtitle({'$\left(\hat{\theta}_n - \theta\right)^2$ for Different neighbors ratio'}, 'Interpreter', 'latex');
+        end
+        function plot_MSE_error_compare_DA_DS(obj,direction_mc,all_estimations_every_iter_mc,estimates_mc_CA, true_params_mc)
+            % Plot MSE error for (\hat{\theta} - \theta).^2 with Decentralized as straight line and distributed as dashed
+            display_node = 5;
+            legendNames = cell(1, size(direction_mc, 1)); 
+            colors_size = size(direction_mc, 1);
+            colors = hsv(colors_size);
+            % Construct the legend names based on the rows of direction_mc
+            for i = 1:size(direction_mc, 1)
+                    % Format the direction values to two decimal places
+                    directionStr = num2str(direction_mc(i, :), '%0.2f ');
+                    legendNames{i} = ['Direction: ', directionStr];
+            end
+            figure;
+            legendEntries = {};  % Initialize an empty cell array to hold legend entries
+            for param_idx = 1:4
+                subplot(2,2,param_idx);
+                hold on;
+                legendEntries = {};
+                % Initialize a cell array to store plot handles
+                hPlots = []; % Use a simple array to store handles
+            
+                for j = 1:length(all_estimations_every_iter_mc)
+                    % Define colors for this particular direction
+                    color = colors(j, :);
+            
+                    % Calculate errors for decentralized
+                    errors = (squeeze(all_estimations_every_iter_mc{j}{:}(param_idx, display_node, :)) - true_params_mc(j,param_idx)).^2;
+                    % Decentralized plot (straight line)
+                    hPlotDecentralized = semilogy(errors, 'Color', color, 'LineStyle', '-');
+                    hPlots = [hPlots, hPlotDecentralized];  % Append handle
+                    legendEntries{end+1} = [legendNames{j}, ' Decentralized'];  % Append legend entry
+            
+                    % Calculate centralized estimation error
+                    ca_error = (estimates_mc_CA(j,param_idx) - true_params_mc(j,param_idx)).^2;
+                    % Centralized plot (dashed line) using the same color
+                    hPlotCentralized = semilogy(1:length(errors), repmat(ca_error, 1, length(errors)), 'Color', color, 'LineStyle', '--');
+                    hPlots = [hPlots, hPlotCentralized];  % Append handle
+                    legendEntries{end+1} = [legendNames{j}, ' Centralized'];  % Append legend entry
+                end
+            
+                set(gca, 'YScale', 'log');
+                legend(hPlots, legendEntries, 'Location', 'best');
+            
+                hold off;
+                xlabel('Iterations (k)');
+                ylabel(['$(', '\hat{\theta}_n', ' - \theta)^2$'], 'Interpreter', 'latex');
+                title(['For ' obj.labels_params{param_idx}]);
+            end
+            
+            sgtitle('$\left(\hat{\theta}_n - \theta\right)^2$ for different directions with 19/20 neighbors', 'Interpreter', 'latex');
+
+        end
+        function plot_predictions(obj, time_vector, all_predictions, true_trajectory, network_topo)
+            figure;
+            set(gcf,'Color','white');
+            set(gca,'FontSize',24);
+            subplot(2,1,1);
+            hold on;
+            for t = 1: length(time_vector)
+                plot(all_predictions{t}(:,1),all_predictions{t}(:,2),'o','Color',[0.8 0.8 0.8]);
+                plot(true_trajectory(1,t),true_trajectory(2,t),'k*','MarkerSize',10);
+            end
+            for node = 1:network_topo.numNodes
+                plot(time_vector, squeeze(all_predictions(1, node, :)), 'Color', obj.colors(node, :));
+            end
+            plot(time_vector, true_trajectory(1, :), '--k', 'LineWidth', 1.5);
+            hold off;
+            xlabel('Time (s)');
+            ylabel('Position x (m)');
+            title('Position x Predictions');
+            legend_entries = arrayfun(@(x) ['Node ' num2str(x)], 1:network_topo.numNodes, 'UniformOutput', false);
+            legend_entries{end+1} = 'True Trajectory';
+            legend([legend_entries], 'Location', 'northeastoutside');
+            
+            subplot(2,1,2);
+            hold on;
+            for node = 1:network_topo.numNodes
+                plot(time_vector, squeeze(all_predictions(2, node, :)), 'Color', obj.colors(node, :));
+            end
+            plot(time_vector, true_trajectory(2, :), '--k', 'LineWidth', 1.5);
+            hold off;
+            xlabel('Time (s)');
+            ylabel('Position y (m)');
+            title('Position y Predictions');
+            legend_entries = arrayfun(@(x) ['Node ' num2str(x)], 1:network_topo.numNodes, 'UniformOutput', false);
+            legend_entries{end+1} = 'True Trajectory';
+            legend([legend_entries], 'Location', 'northeastoutside');
+        end
+        function plot_trajectory(obj, true_trajectory, estimated_trajectory)
+            % Shape of the inputs:
+            % true_trajectory: [Num target, track_time, 2]
+            % estimated_trajectory: cell(track_time): [4 x 1]
+            estimated_trajectory = cell2mat(estimated_trajectory);
+            figure;
+            set(gcf,'Color','white');
+            set(gca, 'FontName', 'Times New Roman');
+            set(gca,'FontSize',24);
+            hold on;
+            plot(true_trajectory(1, :, 1), true_trajectory(1, :, 2), '-.ok', 'LineWidth', 0.1, 'DisplayName', 'True Trajectory');
+            % plot(true_trajectory(1, 1:size(true_trajectory,2)-64, 1),true_trajectory(1, 1:size(true_trajectory,2)-64, 2), '-r', 'LineWidth', 1, 'DisplayName', 'Ground truth location');
+            plot(estimated_trajectory(1,:), estimated_trajectory(2,:), '--ob', 'LineWidth', 1.5, 'DisplayName', 'Estimated Trajectory');
+            hold off;
+            xlabel('Position x (m)');
+            ylabel('Position y (m)');
+            title('Target Trajectory');
+            legend('Location', 'northeastoutside');
+        end
+        function plot_geometry_and_target(obj, network_topo, target_position)
+            figure;
+            set(gcf,'Color','white');
+            set(gca, 'FontName', 'Times New Roman');
+            set(gca,'FontSize',24);
+            hold on;
+            plot(network_topo.radar_pos(:,1), network_topo.radar_pos(:,2), 'rs', 'MarkerSize', 10, 'DisplayName', 'Sensor Nodes');
+            plot(target_position(1), target_position(2), 'k*', 'MarkerSize', 10, 'DisplayName', 'Target Position');
+            hold off;
+            xlabel('Position x (m)');
+            ylabel('Position y (m)');
+            title('Network Geometry and Target Position');
+            legend('Location', 'northeastoutside');
+        end
+        function plot_trajectory_and_network(obj, true_trajectory, estimated_trajectory,network_topo)
+            % Shape of the inputs:
+            % true_trajectory: [Num target, track_time, 2]
+            % estimated_trajectory: cell(track_time): [4 x 1]
+            estimated_trajectory = cell2mat(estimated_trajectory);
+            fig = figure;
+            set(gcf,'Color','white');
+            set(gca, 'FontName', 'Times New Roman');
+            set(gca,'FontSize',25);
+            hold on;
+
+
+            
+
+            gt = plot(true_trajectory(1, :, 1), true_trajectory(1, :, 2), '--sk', 'LineWidth', 2, 'DisplayName', 'True Trajectory','MarkerSize', 20);
+            plot(network_topo.radar_pos(:,1), network_topo.radar_pos(:,2), 'r.', 'MarkerSize', 40, 'DisplayName', 'Sensor Nodes');
+            % pred = plot(estimated_trajectory(1,:), estimated_trajectory(2,:), '--ob', 'LineWidth', 2, 'DisplayName', 'Estimated Trajectory','MarkerSize', 10);
+            pred = plot(estimated_trajectory(1,:), estimated_trajectory(2,:), 'o', 'LineWidth', 2, 'DisplayName', 'Estimated Trajectory','MarkerSize', 10);
+
+            % Choose fewer index to visualized
+            gtstep = max(1, floor(length(true_trajectory(1,:,2))/20));
+            gt.MarkerIndices = 1:gtstep:length(true_trajectory(1,:,2));
+            
+            % predstep = max(1, floor(length(estimated_trajectory(1,:))/20));
+            % pred.MarkerIndices = 1:predstep:length(estimated_trajectory(1,:));
+
+            % Plot communication link
+            for n = 1:network_topo.numNodes 
+                neighbors_idx = find(network_topo.laplacian_matrix(n,:) == -1).'; 
+                % pairs = nchoosek(neighbors_idx,2);
+                for j = 1: size(neighbors_idx,1)
+                     if (n == 1 & j == 1)
+                         plot([network_topo.radar_pos(n,1),network_topo.radar_pos(neighbors_idx(j),1)],...
+                         [network_topo.radar_pos(n,2),network_topo.radar_pos(neighbors_idx(j),2)],...
+                         '--k','LineWidth',1.5,'DisplayName','Communication link');
+                     end
+                     plot([network_topo.radar_pos(n,1),network_topo.radar_pos(neighbors_idx(j),1)],...
+                         [network_topo.radar_pos(n,2),network_topo.radar_pos(neighbors_idx(j),2)],...
+                         '--k','LineWidth',1.5);
+                end
+            end
+
+            hold off;
+            xlabel('Position x (m)');
+            ylabel('Position y (m)');
+            % title('Target Trajectory');
+            % legend('Location', 'best');
+            objs = findobj(gca, '-property', 'DisplayName');
+            objs = objs(arrayfun(@(h) ~isempty(h.DisplayName), objs));  
+            legend(flipud(objs), 'Location', 'bestoutside');  
+            grid on;box on;ax=gca;ax.LineWidth=1.5;
+            exportgraphics(fig, 'output.pdf', 'ContentType', 'vector');
+
+        end
+        function plot_setup(obj, true_trajectory,network_topo)
+            % Shape of the inputs:
+            % true_trajectory: [Num target, track_time, 2]
+            fig = figure;
+            set(gcf,'Color','white');
+            set(gca, 'FontName', 'Times New Roman');
+            set(gca,'FontSize',15);
+            hold on;
+            h1 = plot(true_trajectory(1, :, 1), true_trajectory(1, :, 2), '--ob', 'LineWidth', 1.5, 'DisplayName', 'True Trajectory');
+            h1.MarkerSize = 5;
+            h1.MarkerIndices = 1:20:length(true_trajectory(1, :, 1));
+            plot(network_topo.radar_pos(:,1), network_topo.radar_pos(:,2), 'r.', 'MarkerSize', 50, 'DisplayName', 'Sensor Nodes');
+            % Plot communication link
+            for n = 1:network_topo.numNodes 
+                neighbors_idx = find(network_topo.laplacian_matrix(n,:) == -1).'; 
+                % pairs = nchoosek(neighbors_idx,2);
+                for j = 1: size(neighbors_idx,1)
+                     if (n == 1 & j == 1)
+                         plot([network_topo.radar_pos(n,1),network_topo.radar_pos(neighbors_idx(j),1)],...
+                         [network_topo.radar_pos(n,2),network_topo.radar_pos(neighbors_idx(j),2)],...
+                         '--k','LineWidth',1,'DisplayName','Communication Link');
+                     end
+                     plot([network_topo.radar_pos(n,1),network_topo.radar_pos(neighbors_idx(j),1)],...
+                         [network_topo.radar_pos(n,2),network_topo.radar_pos(neighbors_idx(j),2)],...
+                         '--k','LineWidth',1);
+                end
+            end
+
+            hold off;
+            % xlabel('Position x (m)');
+            % ylabel('Position y (m)');
+            % title('Target Trajectory');
+            % legend('Location', 'best');
+            set(gca,'xtick',[])
+            set(gca,'ytick',[])
+            objs = findobj(gca, '-property', 'DisplayName');
+            objs = objs(arrayfun(@(h) ~isempty(h.DisplayName), objs));  
+            legend(flipud(objs), 'Location', 'best');  
+            grid off;box on;ax=gca;ax.LineWidth=1.5;
+           
+        end
+
+        function plot_converge_mse_across_node_withCentrl(obj,all_estimations_every_iter,true_params,network_topo, all_estimations_centrl)
+            figure;
+            % ut = make_figs(10);
+            % figure = ut.paperFig("double");
+            set(gcf,'Color','white');
+            set(gca, 'FontName', 'Times New Roman');
+            % set(gca,'FontSize',40);
+            t = tiledlayout(4,1);
+            for param = 1:4
+                % subplot(2, 2, param);
+                ax = nexttile;
+                ax.XAxis.FontSize = 20;
+                ax.YAxis.FontSize = 20;
+                hold on;  % Allows multiple plots on the same axes
+            
+                % Plot estimations for each node
+                for node = 1:network_topo.numNodes
+                    mse_da = sqrt((squeeze(all_estimations_every_iter(param, node, :)) - true_params(param)).^2);
+                    plot(mse_da, 'Color', obj.colors(node, :),'LineWidth',1.5);
+                end
+            
+                % Plot true parameter as a dotted line
+                % h_true = yline(true_params(param), '--k', 'LineWidth', 1.5);
+                mse_ca = sqrt((all_estimations_centrl(param) - true_params(param))^2);
+                % h_true= yline(0 , '--k', 'LineWidth', 1.5);
+                h_centrl = yline(mse_ca , '--k', 'LineWidth', 2);
+                
+            
+                hold off;
+                hx = xlabel('Consensus iteration','FontName','Times New Roman');
+                % hy = ylabel([obj.labels_params{param} 'estimates']);
+                % hy = ylabel(['MSE of ' obj.labels_params{param} '$\sum_{n}(\hat{\boldsymbol{\theta}} - \boldsymbol{\theta})$'],'Interpreter','latex');
+                hy = ylabel(['MSE of ' obj.labels_params{param}],'Interpreter','latex');
+                % hy = ylabel('$\sum_{n}$','Interpreter','latex')
+                % title([obj.labels_params{param}],'FontSize',14);
+                % legend_entries = arrayfun(@(x) ['Node ' num2str(x)], 1:network_topo.numNodes, 'UniformOutput', false);
+                % legend_entries{end+1} = 'True Parameter';
+                % legend_entries{end+1} = 'Centralized';
+                % legend([legend_entries], 'Location', 'northeast','FontSize',12);
+                hx.FontSize= 18;
+                hy.FontSize= 18;
+                yscale(ax,"log");
+                % if (param == 1 | param == 2)
+                %     xlim([0, 20]);
+                % end
+                % if (param == 3 | param == 4)
+                %     xlim([0, 170]);
+                % end
+                % if (param == 1 | param == 2)
+                %     ylim([0, 1e-1]);
+                %     xlim([0 33]);
+                % end
+                % if (param == 3 | param == 4)
+                %     ylim([0, 5e-2]);
+                %      xlim([0 33]);
+                % end
+                % 
+                box on; grid on;
+            end
+            legend_entries = arrayfun(@(x) ['Node ' num2str(x)], 1:network_topo.numNodes, 'UniformOutput', false);
+            % legend_entries{end+1} = 'True Parameter';
+            legend_entries{end+1} = 'Centralized';
+            lng = legend([legend_entries], 'Location', 'best','FontSize',12,'FontName','Times New Roman');
+            lng.NumColumns = 5;
+            t.TileSpacing = 'compact';
+            t.Padding = 'compact';
+        end
+
+
+        function [fig, ax] = paperFig(obj,kind)
+        %PAPERFIG Create a paper-ready figure with fixed physical size (cm).
+        %   [fig, ax] = paperFig()               % default: 'single'
+        %   [fig, ax] = paperFig('single')       % single-column size
+        %   [fig, ax] = paperFig('double')       % double-column size
+        
+            if nargin < 1 || isempty(kind)
+                kind = 'single';
+            end
+        
+            % normalize input for safety (older MATLAB compatible)
+            if isstring(kind), kind = char(kind); end
+            kind = lower(strtrim(kind));
+        
+            switch kind
+                case 'single'
+                    W = 8.5;  H = 6.0;   % cm
+                case 'double'
+                    W = 18.0; H = 6.5;   % cm
+                otherwise
+                    error('paperFig:BadKind','kind must be ''single'' or ''double''.');
+            end
+        
+            % Create figure with fixed size in centimeters
+            fig = figure( ...
+                'Units','centimeters', ...
+                'Position',[2 2 W H], ...
+                'Color','w', ...
+                'Renderer','painters');
+        
+            % Create axes (compatible signature)
+            ax = axes('Parent',fig);
+        
+            % Consistent margins (normalized)
+            set(ax, ...
+                'Units','normalized', ...
+                'Position',[0.12 0.16 0.85 0.78], ...
+                'FontName','Times New Roman', ...
+                'FontSize',8, ...
+                'LineWidth',0.8, ...
+                'Box','on');
+        end
+    end
+end
