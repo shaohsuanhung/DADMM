@@ -35,7 +35,7 @@ TYPE       = "DKF_ADMM";
 
 %% ---------------- P1: Simulation parameters ----------------
 NUM_CPI_PER_MEA = 64;
-TRACK_TIME      = 1;
+TRACK_TIME      = 8;
 dt              = 1e-2;
 NUM_TAR         = 1;
 M_total         = NUM_CPI_PER_MEA * TRACK_TIME;
@@ -263,9 +263,9 @@ for mc = 1:num_monte_carlo
             % x_nodes_admm(:,n) is retained so the recursion remains
             % distributed if ADMM stops before exact consensus.
             for n = 1:network_topo.numNodes
-                % x_dadmm{n} = x_nodes_admm(:, n);
-                x_dadmm{n} = x_consensus; % Prior as consensus result
-                P_dadmm{n} = P_nodes_admm{n};
+                x_dadmm{n} = x_nodes_admm(:, n);
+                % x_dadmm{n} = x_consensus; % Prior as consensus result
+                % P_dadmm{n} = P_nodes_admm{n};
                 all_est{t,n} = x_nodes_admm(:, n);
             end
 
@@ -665,17 +665,31 @@ function [x_bar, x_nodes, P_nodes, info] = consensus_admm_nonlinear_tracking( ..
     % as the baseline DKF. This is only for recursive covariance propagation
     % and logging; the ADMM primal estimate itself is from fmincon.
     P_nodes = cell(1, N);
-    for n = 1:N %H_{n,k}'*Sigma^{-1}*H_{n,k}
-        idx_set = get_measurement_index_set(n, network_topo, measurement_mode);
-        y_bar = stack_measurements(idx_set, range_meas, doppler_meas, t);
-        [~, P_tmp, ~] = dkf_neighbor_update_pw( ...
-                        x_pred_nodes{n}, P_pred_nodes{n}, y_bar, idx_set, ...
-                        network_topo, env, models_ut);
-        P_nodes{n} = symmetrize(P_tmp);
-    end
+    % for n = 1:N % H_{n,k}'*Sigma^{-1}*H_{n,k}
+    %     idx_set = get_measurement_index_set(n, network_topo, measurement_mode);
+    %     y_bar = stack_measurements(idx_set, range_meas, doppler_meas, t);
+    %     % [~, P_tmp, ~] = dkf_neighbor_update_pw( ...
+    %     %                 x_pred_nodes{n}, P_pred_nodes{n}, y_bar, idx_set, ...
+    %     %                 network_topo, env, models_ut);
+    %     % [~, P_tmp, ~] = dkf_neighbor_update( ...
+    %     %                 x_pred_nodes{n}, P_pred_nodes{n}, y_bar, idx_set, ...
+    %     %                 network_topo, env, models_ut);
+    %     % P_nodes{n} = symmetrize(P_tmp);
+    %     % Info mtx: H*Sigma*H + P^(-1)_{n,k|k-1}
+    % 
+    % end
+    info_mtxs = cell(1,N);
     for n = 1:N
+        hn = models_ut.LocalMeasureModel_dkf(x_pred_nodes{n}, n, network_topo, env);            % 2x1 (unwhitened physical)
+        Hn = models_ut.LocalMeasureModelJacobian_dkf(x_pred_nodes{n}, n, network_topo, env);    % 2x4 (unwhitened)
+        info_mtxs{n} = Hn'*env.Sigma*Hn + inv(P_pred_nodes{n});
+    end
+
+    for n = 1:N
+        P_nodes{n} = inv(info_mtxs{n});
         for j = neighbors{n} 
-            P_nodes{n} = inv(inv(P_nodes{n})+inv(P_nodes{j})); %Sum of information of self + neighbor nodes
+            % P_nodes{n} = inv(inv(P_nodes{n})+inv(P_nodes{j})); %Sum of information of self + neighbor nodes
+            P_nodes{n} = P_nodes{n} + inv(info_mtxs{j});
         end
     end
 
