@@ -8,7 +8,7 @@ PRE_WHITEN  = false;   % prewhiten in dkf_neighbor_update func.
 
 %% ---------------- P1: Simulation parameters ----------------
 NUM_CPI_PER_MEA = 64;
-TRACK_TIME      = 10;
+TRACK_TIME      = 1;
 dt              = 1e-2;
 NUM_TAR = 1;
 

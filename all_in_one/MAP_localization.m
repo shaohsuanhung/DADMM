@@ -6,18 +6,18 @@ clear;
 
 ut = ADMM_utils;
 DEBUG = true;              % verbose
-TYPE  = "MAP";             % "MAP" or "MLE"
+TYPE  = "MLE";             % "MAP" or "MLE"
 PRE_WHITEN = false;         % <--- switch here
 
 % -----------------------
 % MC config
 % -----------------------
-num_monte_carlo =1;
+num_monte_carlo =20;
 seed0 = 43;
 
 % Log config
 LOG_ENABLE = true;
-LOG_DIR = "./data_log/localization/MC100_2";
+LOG_DIR = "./final_data_log/localization/MC20";
 RUN_NAME = "localization";
 
 
@@ -69,7 +69,7 @@ env.fs = 2 * env.B;
 dt = env.time_step;
 
 % SNR
-snr_idx_list = [50];
+snr_idx_list = [5,10,20,30,40,50];
 % snr_idx_list = [50];
 SNR_lin_list = 10.^(snr_idx_list./10);
 

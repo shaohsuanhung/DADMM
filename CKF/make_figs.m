@@ -525,14 +525,18 @@ classdef make_figs
                 'MarkerSize', 50, 'DisplayName', 'Sensor Nodes');
             
             % estimated trajectory line only
-            plot(ax1, estimated_trajectory(1,:), estimated_trajectory(2,:), '--b', ...
+            pred = plot(ax1, estimated_trajectory(1,:), estimated_trajectory(2,:), '--b', ...
                 'LineWidth', 2, 'HandleVisibility', 'off');
             
+            % Choose fewer index to visualized
+            % predstep = max(1, floor(length(estimated_trajectory(1,:))/20));
+            % pred.MarkerIndices = 1:predstep:length(estimated_trajectory(1,:));
+
             % sparse markers only
             Nmarker = NumMark;   % 你想顯示幾個 marker
             idx = unique(round(linspace(1, size(estimated_trajectory,2), Nmarker)));
             
-            plot(ax1, estimated_trajectory(1,idx), estimated_trajectory(2,idx), '>b', ...
+            plot(ax1, estimated_trajectory(1,idx), estimated_trajectory(2,idx), '-ob', ...
                 'LineStyle', 'none', 'MarkerSize', 8, 'DisplayName', 'Estimated Trajectory','LineWidth',2);
 
             xlabel(ax1,'Position x (m)');
@@ -556,7 +560,7 @@ classdef make_figs
                 mse_array(t,:) = mse_mat{t};
             end
             
-            state_names = {'X position', 'Y position', 'v_x', 'v_y'};
+            state_names = {'RMSE X', 'RMSE Y', 'v_x', 'v_y'};
             label_fs = 25;
             tick_fs  = 20;
             title_fs = 20;
@@ -574,7 +578,7 @@ classdef make_figs
                 plot(1:T, mse_array(:,i), 'LineWidth', 2);
                 grid on;
                 xlim([1 1920]);
-                xlabel('time $k$ (ms)', 'FontSize', label_fs,'Interpreter','latex');
+                xlabel('time k (ms)', 'FontSize', label_fs);
                 ylabel('RMSE', 'FontSize', label_fs);
                 title(state_names{i}, 'FontSize', title_fs);
             

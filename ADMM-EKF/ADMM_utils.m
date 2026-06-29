@@ -24,8 +24,9 @@ classdef ADMM_utils
                 relative_position = [x_j - x_tar, y_j - y_tar];
                 norm_rel_position = sqrt((x_j - x_tar).^2 + (y_j - y_tar).^2);
                 norm_rel_position = max(norm_rel_position, 1);  % Avoid division by zero
-                f_d_model = (v_x * (x_j - x_tar) + (v_y * (y_j - y_tar))) / (norm_rel_position * lambda);
-                
+                % f_d_model = 2*(v_x * (x_j - x_tar) + (v_y * (y_j - y_tar))) / (norm_rel_position * lambda);
+                f_d_model = -2*(v_x * (x_j - x_tar) + (v_y * (y_j - y_tar))) / (norm_rel_position * lambda); % Updaet ver.
+
                 % Add the whitening transformation here if needed
                 if ~isempty(varargin)
                     L = varargin{1};
@@ -84,14 +85,16 @@ classdef ADMM_utils
                 for i = 1:M
                     % Range model
                     r_model = sqrt((x_j - x_tar).^2 + (y_j - y_tar).^2);
-                    r_model = max(r_model, 1); % Avoid division by zero for stability
+                    r_model = max(r_model, 1e-8); % Avoid division by zero for stability
                     
                     % Doppler shift model
                     relative_position = [x_j - x_tar, y_j - y_tar];
                     norm_rel_position = sqrt((x_j - x_tar).^2 + (y_j - y_tar).^2);
-                    norm_rel_position = max(norm_rel_position, 1);  % Avoid division by zero
-                    f_d_model = (v_x * (x_j - x_tar) + (v_y * (y_j - y_tar))) / (norm_rel_position * lambda);
-                    
+                    norm_rel_position = max(norm_rel_position, 1e-8);  % Avoid division by zero
+                    % f_d_model = (v_x * (x_j - x_tar) + (v_y * (y_j - y_tar))) / (norm_rel_position * lambda);
+                     % f_d_model = 2*(v_x * (x_j - x_tar) + (v_y * (y_j - y_tar))) / (norm_rel_position * lambda); % Updaet ver.
+                    f_d_model = -2*(v_x * (x_j - x_tar) + (v_y * (y_j - y_tar))) / (norm_rel_position * lambda); % Updaet ver.
+
 
                     % Add the whitening transformation here if needed
                     if ~isempty(varargin)
@@ -287,7 +290,12 @@ classdef ADMM_utils
                 sum_L2 = sum_L2 + norm((c_penalty/2)' .* (params - update_z{n}(:,j))).^2;
             end
             map_with_consensus = posterior + sum_L1 + sum_L2;
-            
+            % fprintf('posterior  = %.6e\n', real(posterior));
+            % fprintf('sum_L1  = %.6e\n', real(sum_L1));
+            % fprintf('sum_L2  = %.6e\n', real(sum_L2));
+            % if ~isreal(posterior)
+            %     fprintf("stop");
+            % end
         end
     
         %% Posterior CRLB
@@ -377,7 +385,7 @@ classdef ADMM_utils
                 relative_position = [x_j - x_tar, y_j - y_tar];
                 norm_rel_pos = norm(relative_position);
                 r_model = norm_rel_pos;
-                f_d_model = dot([v_x, v_y], relative_position) / (norm_rel_pos * lambda);
+                f_d_model = dot([v_x, v_y], relative_position) / (norm_rel_pos * lambda * 0.5);
 
                 % Partial derivatives of range with respect to parameters
                 dr_dx = (x_tar - x_j) / r_model;
@@ -386,10 +394,10 @@ classdef ADMM_utils
                 dr_dvy = 0;
 
                 % Partial derivatives of Doppler with respect to parameters
-                df_dvx = relative_position(1) / (norm_rel_pos * lambda);
-                df_dvy = relative_position(2) / (norm_rel_pos * lambda);
-                df_dx = -dot([v_x, v_y], relative_position) * (x_tar - x_j) / (norm_rel_pos^3 * lambda);
-                df_dy = -dot([v_x, v_y], relative_position) * (y_tar - y_j) / (norm_rel_pos^3 * lambda);
+                df_dvx = relative_position(1) / (norm_rel_pos * lambda * 0.5 );
+                df_dvy = relative_position(2) / (norm_rel_pos * lambda* 0.5);
+                df_dx = -dot([v_x, v_y], relative_position) * (x_tar - x_j) / (norm_rel_pos^3 * lambda * 0.5);
+                df_dy = -dot([v_x, v_y], relative_position) * (y_tar - y_j) / (norm_rel_pos^3 * lambda * 0.6);
 
                 % Jacobian matrix for the i-th measurement
                 J_i = [dr_dx, dr_dy, dr_dvx, dr_dvy; df_dx, df_dy, df_dvx, df_dvy];
@@ -514,7 +522,7 @@ classdef ADMM_utils
             relative_position = -(radar_pos_expand - target_pos_expand); % [num_target x numNodes x M x 2]
             range_true = vecnorm(relative_position,2,4); % [num_target x numNodes x M]
             %TOCORRECT Doppler calculation
-            doppler_true = reshape(reshape(relative_position,[],2)*[target.speed * target.direction]',[num_target,network_topo.numNodes,M])./(range_true.* env.lambda);
+            doppler_true = reshape(reshape(relative_position,[],2)*[target.speed * target.direction]',[num_target,network_topo.numNodes,M])./(range_true.* env.lambda*0.5);
             % doppler_true = reshape(reshape(relative_position,[],2)*[2.*target.speed * target.direction]',[num_target,network_topo.numNodes,M])./(range_true.* env.lambda);
             measurements_true(:,:, 1:2:end) = range_true; % Odd index for range
             measurements_true(:,:, 2:2:end) = doppler_true; % Even index for Doppler
@@ -542,7 +550,7 @@ classdef ADMM_utils
             range_true = vecnorm(relative_position,2,4); % [num_target x numNodes x M]
             %TOCORRECT Doppler calculation
             relative_vel = squeeze(target.target_state(1,:,3:4))';
-            doppler_true = reshape((sum(squeeze(relative_position).*permute(relative_vel,[3,2,1]),3)),[num_target,network_topo.numNodes,M])./(range_true.* env.lambda);
+            doppler_true = reshape((sum(squeeze(relative_position).*permute(relative_vel,[3,2,1]),3)),[num_target,network_topo.numNodes,M])./(range_true.* env.lambda*0.5);
             measurements_true(:,:, 1:2:end) = range_true; % Odd index for range
             measurements_true(:,:, 2:2:end) = doppler_true; % Even index for Doppler
         end

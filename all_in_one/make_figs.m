@@ -556,14 +556,14 @@ classdef make_figs
             set(gca, 'FontName', 'Times New Roman');
             hold on;
 
-            gt = plot(true_trajectory(1, :, 1), true_trajectory(1, :, 2), '--sk', 'LineWidth', 2, 'DisplayName', 'True Trajectory', 'MarkerSize',10);
-            plot(network_topo.radar_pos(:,1), network_topo.radar_pos(:,2), 'r.', 'MarkerSize', 50, 'DisplayName', 'Sensor Nodes');
+            gt = plot(true_trajectory(1, :, 1), true_trajectory(1, :, 2), '-.k', 'LineWidth', 2.5, 'DisplayName', 'True Trajectory', 'MarkerSize',20);
+            plot(network_topo.radar_pos(:,1), network_topo.radar_pos(:,2), 'r.', 'MarkerSize', 40, 'DisplayName', 'Sensor Nodes');
             % plot(true_trajectory(1, 1:size(true_trajectory,2)-64, 1),true_trajectory(1, 1:size(true_trajectory,2)-64, 2), '-r', 'LineWidth', 1, 'DisplayName', 'Ground truth location');
             pred = plot(estimated_trajectory(1,:), estimated_trajectory(2,:), '--ob', 'LineWidth', 2, 'DisplayName', 'Estimated Trajectory', 'MarkerSize',10);
             
 
             % Choose fewer index to visualized
-            gtstep = max(1, floor(length(true_trajectory(1,:,2))/10));
+            gtstep = max(1, floor(length(true_trajectory(1,:,2))/12));
              gt.MarkerIndices = 1:gtstep:length(true_trajectory(1,:,2));
             
             predstep = max(1, floor(length(estimated_trajectory(1,:))/20));
@@ -579,11 +579,11 @@ classdef make_figs
                      if (n == 1 & j == 1)
                          plot([network_topo.radar_pos(n,1),network_topo.radar_pos(neighbors_idx(j),1)],...
                          [network_topo.radar_pos(n,2),network_topo.radar_pos(neighbors_idx(j),2)],...
-                         '--k','LineWidth',1.5,'DisplayName','Communication link');
+                         '-k','LineWidth',1.5,'DisplayName','Communication link');
                      end
                      plot([network_topo.radar_pos(n,1),network_topo.radar_pos(neighbors_idx(j),1)],...
                          [network_topo.radar_pos(n,2),network_topo.radar_pos(neighbors_idx(j),2)],...
-                         '--k','LineWidth',1.5);
+                         '-k','LineWidth',1);
                 end
             end
 
@@ -598,24 +598,24 @@ classdef make_figs
             grid on;box on;ax=gca;ax.LineWidth=1.5;
             % exportgraphics(fig, 'output.pdf', 'ContentType', 'vector');
             
-            % 3. Build Inset plot
-            % Position 參數為 [左下角X, 左下角Y, 寬度, 高度]，範圍 0 到 1
-            axes('Position', [0.6, 0.35, 0.2, 0.2]); 
-            box on; % 加上外框
-            gt = plot(true_trajectory(1, :, 1), true_trajectory(1, :, 2), '--sk', 'LineWidth', 2, 'DisplayName', 'True Trajectory', 'MarkerSize',5);
-            hold on 
-            pred = plot(estimated_trajectory(1,:), estimated_trajectory(2,:), '--ob', 'LineWidth', 2, 'DisplayName', 'Estimated Trajectory', 'MarkerSize',5);
-            % Choose fewer index to visualized
-            gtstep = max(1, floor(length(true_trajectory(1,:,2))/100));
-             gt.MarkerIndices = 1:gtstep:length(true_trajectory(1,:,2));
-            
-            predstep = max(1, floor(length(estimated_trajectory(1,:))/20));
-            pred.MarkerIndices = 1:predstep:length(estimated_trajectory(1,:));
-            
-            % 4. 設定放大區域
-            xlim([-1, 3]); % 設定想觀察的細部 X 軸範圍
-            ylim([8, 12]); % 設定想觀察的細部 Y 軸範圍
-            title('Zoomed View');
+            % % 3. Build Inset plot
+            % % Position 參數為 [左下角X, 左下角Y, 寬度, 高度]，範圍 0 到 1
+            % axes('Position', [0.6, 0.35, 0.2, 0.2]); 
+            % box on; % 加上外框
+            % gt = plot(true_trajectory(1, :, 1), true_trajectory(1, :, 2), '--sk', 'LineWidth', 2, 'DisplayName', 'True Trajectory', 'MarkerSize',5);
+            % hold on 
+            % pred = plot(estimated_trajectory(1,:), estimated_trajectory(2,:), '--ob', 'LineWidth', 2, 'DisplayName', 'Estimated Trajectory', 'MarkerSize',5);
+            % % Choose fewer index to visualized
+            % gtstep = max(1, floor(length(true_trajectory(1,:,2))/100));
+            %  gt.MarkerIndices = 1:gtstep:length(true_trajectory(1,:,2));
+            % 
+            % predstep = max(1, floor(length(estimated_trajectory(1,:))/20));
+            % pred.MarkerIndices = 1:predstep:length(estimated_trajectory(1,:));
+            % 
+            % % 4. 設定放大區域
+            % xlim([-1, 3]); % 設定想觀察的細部 X 軸範圍
+            % ylim([8, 12]); % 設定想觀察的細部 Y 軸範圍
+            % title('Zoomed View');
         end
 
         function plot_trajectory_and_network_with_sigma(obj, true_trajectory, estimated_trajectory,network_topo)

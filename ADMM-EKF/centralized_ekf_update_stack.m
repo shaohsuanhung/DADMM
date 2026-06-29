@@ -34,7 +34,7 @@ function [x_post, P_post] = centralized_ekf_update_stack(x_pred, P_pred, z, netw
 
     x_post = x_pred + K*innov;
     P_post = (eye(nx) - K*H)*P_pred;
-    P_post = 0.5*(P_post + P_post'); % sym
+    % P_post = 0.5*(P_post + P_post'); % sym
 end
 
 function [z, H] = global_meas_and_jacobian_no_whiten(x, idx, network_topo, env)
@@ -45,6 +45,7 @@ function [z, H] = global_meas_and_jacobian_no_whiten(x, idx, network_topo, env)
 
     dx = xr - x_i;
     dy = yr - y_i;
+    % dx = xr; dy = yr;
     r  = sqrt(dx^2 + dy^2);
 
     % Doppler model consistent with your models.m

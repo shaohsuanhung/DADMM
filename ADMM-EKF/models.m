@@ -124,45 +124,27 @@ classdef models
             % disp(z);
         end 
         
-        function z = LocalMeasureModelJacobian_dkf(state,idx,network_topo, env)
-            x = state(1);
-            y = state(2);
+        function H = LocalMeasureModelJacobian_dkf(state,idx,network_topo, env)
+            x = state(1);y = state(2);
+            x_i = network_topo.radar_pos(idx,1); y_i = network_topo.radar_pos(idx,2);
+            dx = x; dy = y;
             v_x = state(3);
             v_y = state(4);
             dist_node_tar = @(x,y) max(sqrt((x)^2 + (y)^2),1); % Avoid division by zero for stability
-            r = dist_node_tar(x,y);
-
+            r = dist_node_tar(dx,dy);
+                
             dr_dx = @(idx,x,y,v_x,v_y, network_topo) (x)/(r);
             dr_dy =  @(idx,x,y,v_x,v_y, network_topo)  (y)/(r);
-
-
-            % df_dx = @(idx,x,y,v_x,v_y, network_topo) ((-v_x*r)+...
-            %                                         ((v_x*(-x)+v_y*(-y))*...
-            %                                         (-x)/r))/...
-            %                                         (env.lambda*r^2);
-
-            % df_dy = @(idx,x,y,v_x,v_y, network_topo)  ((-v_y*r)+...
-            %                                         ((v_x*(-x)+v_y*(-y))*...
-            %                                         (-y)/r))/...
-            %                                         (env.lambda*r^2);
-
-            % df_dvx = @(idx,x,y,v_x,v_y, network_topo) -(x)/ (env.lambda*r);
-            % df_dvy = @(idx,x,y,v_x,v_y, network_topo) -(y)/ (env.lambda*r); 
-
-            
-            df_dx = @(idx,x,y,v_x,v_y, network_topo) (v_x*r^2-(v_x*x+v_y*y)*x)/...
+            df_dx = @(idx,x,y,v_x,v_y, network_topo) 2*(v_x*r^2-(v_x*x+v_y*y)*x)/...
                                                     (env.lambda*r^3);
-
-            df_dy = @(idx,x,y,v_x,v_y, network_topo)  (v_y*r^2-(v_x*x+v_y*y)*y)/...
+            df_dy = @(idx,x,y,v_x,v_y, network_topo)  2*(v_y*r^2-(v_x*x+v_y*y)*y)/...
                                                     (env.lambda*r^3);
+            df_dvx = @(idx,x,y,v_x,v_y, network_topo) 2*(x)/ (env.lambda*r);
+            df_dvy = @(idx,x,y,v_x,v_y, network_topo) 2*(y)/ (env.lambda*r); 
 
-            df_dvx = @(idx,x,y,v_x,v_y, network_topo) (x)/ (env.lambda*r);
-            df_dvy = @(idx,x,y,v_x,v_y, network_topo) (y)/ (env.lambda*r); 
-
-
-            z = [dr_dx(idx,x,y,v_x,v_y, network_topo), dr_dy(idx,x,y,v_x,v_y, network_topo), 0, 0; 
-                 df_dx(idx,x,y,v_x,v_y, network_topo), df_dy(idx,x,y,v_x,v_y, network_topo), ...
-                df_dvx(idx,x,y,v_x,v_y, network_topo), df_dvy(idx,x,y,v_x,v_y, network_topo)];
+            H = [dr_dx(idx,dx,dy,v_x,v_y, network_topo), dr_dy(idx,dx,dy,v_x,v_y, network_topo), 0, 0; 
+                 df_dx(idx,dx,dy,v_x,v_y, network_topo), df_dy(idx,dx,dy,v_x,v_y, network_topo), ...
+                df_dvx(idx,dx,dy,v_x,v_y, network_topo), df_dvy(idx,dx,dy,v_x,v_y, network_topo)];
             
             % z = env.pre_whit_L * z;
             % Show input state
@@ -173,6 +155,39 @@ classdef models
             % disp(['Radar Position: ', num2str(network_topo.radar_pos(idx,:))]);
             % disp('Jacobian Matrix:');
             % disp(z);
+            
+            % global measurement: range + doppler relative to radar idx
+            % xr = state(1); yr = state(2); vx = state(3); vy = state(4);
+            % x_i = network_topo.radar_pos(idx,1);
+            % y_i = network_topo.radar_pos(idx,2);
+            % 
+            % dx = xr - x_i;
+            % dy = yr - y_i;
+            % r  = sqrt(dx^2 + dy^2);
+            % 
+            % Doppler model consistent with your models.m
+            % v_proj = vx*dx + vy*dy;
+            % fd = (2/env.lambda) * (v_proj / r);
+            % 
+            % z = [r; fd];
+            % 
+            % Jacobian (no whitening)
+            % drdx = dx/r;
+            % drdy = dy/r;
+            % 
+            % fd = (2/lambda) * ( (vx*dx + vy*dy)/r )
+            % Let g = vx*dx + vy*dy, then fd = c0 * g / r
+            % c0 = 2/env.lambda;
+            % g = v_proj;
+            % 
+            % dfd_dx = c0 * ( (vx*r - g*(drdx)) / (r^2) );  % derivative w.r.t xr
+            % dfd_dy = c0 * ( (vy*r - g*(drdy)) / (r^2) );  % derivative w.r.t yr
+            % dfd_dvx = c0 * (dx / r);
+            % dfd_dvy = c0 * (dy / r);
+            % 
+            % H = [ drdx,    drdy,    0,      0;
+            %       dfd_dx,  dfd_dy,  dfd_dvx, dfd_dvy ];
+
         end 
 
         function z = LocalMeasureModelJacobian_refactor(state)

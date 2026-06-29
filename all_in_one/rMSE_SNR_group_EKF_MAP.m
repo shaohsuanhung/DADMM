@@ -180,6 +180,9 @@ for k = 1:numel(groups)
         elseif L.TYPE=="MLE"
             [m4, v4, s4] = compute_final_rmse_state_stats_from_log_MLE(L, stateIdx);
             [m4_CA, v4_CA, s4_CA] = compute_final_rmse_state_stats_from_log_MLE_CA(L, stateIdx);
+        elseif L.TYPE=="DKF_ADMM"
+            [m4, v4, s4] = compute_final_rmse_state_stats_from_log_MLE(L, stateIdx);
+            [m4_CA, v4_CA, s4_CA] = compute_final_rmse_state_stats_from_log_MLE_CA(L, stateIdx);
         else
             error("Non-defined type.")
         end
@@ -251,6 +254,14 @@ for s = 1:4
         end
         end
 
+        if results(k).name == "EKF"
+        if useSemi
+            hMean_CA = semilogy(ax, x, mu_CA, '--o', 'LineWidth', 3, 'MarkerSize', 6);
+        else
+            hMean_CA = plot(ax, x, mu_CA, '--o', 'LineWidth', 3, 'MarkerSize', 6);
+        end
+        end
+
         % --- CRLB line (per-state), same color as mean RMSE ---
         hCRLB = gobjects(0);
         if showCRLB
@@ -274,6 +285,11 @@ for s = 1:4
                 leg(end+1) = results(k).name + " CRLB"; %#ok<AGROW>
             end
             if results(k).name == "MAP"
+            hLegend(end+1) = hMean_CA; %#ok<AGROW>
+            leg(end+1) = "C-" + results(k).name; %#ok<AGROW>
+            end
+
+            if results(k).name == "EKF"
             hLegend(end+1) = hMean_CA; %#ok<AGROW>
             leg(end+1) = "C-" + results(k).name; %#ok<AGROW>
             end
@@ -329,7 +345,7 @@ function [mean4, var4, std4] = compute_final_rmse_state_stats_from_log_CA(L, sta
         for n = 1:N
             E = est{t,n};
             if isempty(E), continue; end
-
+            if (size(E) == [1,4]), E = E';end
             % Ef = extract_final_est(E);         % [nState x nMC]
             % Ef = Ef(stateIdx, :);              % [4 x nMC]
 
@@ -374,7 +390,7 @@ function [mean4, var4, std4] = compute_final_rmse_state_stats_from_log_MLE_CA(L,
         for n = 1:N
             E = est{t,n};
             if isempty(E), continue; end
-
+            if (size(E) == [1,4]), E = E'; end
             % Ef = extract_final_est(E);         % [nState x nMC]
             % Ef = Ef(stateIdx, :);              % [4 x nMC]
 
@@ -384,6 +400,7 @@ function [mean4, var4, std4] = compute_final_rmse_state_stats_from_log_MLE_CA(L,
                 xtrue = tru(:, min(n, size(tru,2)));
             end
             err = zeros(4,10);
+            % if E
             if isvector(xtrue)
                 xtrue = xtrue(:);
                 xtrue = xtrue(stateIdx);       % [4 x 1]
@@ -785,41 +802,26 @@ clc;clear;
 % groupA = ["./data_log/localization/MLE_5db/Log.mat","./data_log/localization/MLE_10db/Log.mat","./data_log/localization/MLE_20db/Log.mat","./data_log/localization/MLE_30db/Log.mat","./data_log/localization/MLE_50db/Log.mat"];
 % groupB = ["./data_log/localization/MAP_5db/Log.mat","./data_log/localization/MAP_10db/Log.mat","./data_log/localization/MAP_20db/Log.mat","./data_log/localization/MAP_30db/Log.mat","./data_log/localization/MAP_50db/Log.mat"]; % FIM + N*Q_inv
 % groupC = ["./data_log/localization/MAP_5db_2/Log.mat","./data_log/localization/MAP_10db_2/Log.mat","./data_log/localization/MAP_20db_2/Log.mat","./data_log/localization/MAP_30db_2/Log.mat","./data_log/localization/MAP_50db_2/Log.mat"]; % FIM + N*Q_inv
-groupA = ["./data_log/localization/MC100/MLE_5db/Log.mat","./data_log/localization/MC100/MLE_10db/Log.mat","./data_log/localization/MC100/MLE_20db/Log.mat","./data_log/localization/MC100/MLE_30db/Log.mat","./data_log/localization/MC100/MLE_50db/Log.mat","./data_log/localization/MC100/MLE_40db/Log.mat"];
-groupB = ["./data_log/localization/MC100/MAP_5db/Log.mat","./data_log/localization/MC100/MAP_10db/Log.mat","./data_log/localization/MC100/MAP_20db/Log.mat","./data_log/localization/MC100/MLE_30db/Log.mat","./data_log/localization/MC100/MAP_50db/Log.mat","./data_log/localization/MC100/MAP_40db/Log.mat"];
 
-groupC = ["./data_log/localization/MC20/MLE_5db/Log.mat","./data_log/localization/MC20/MLE_10db/Log.mat","./data_log/localization/MC20/MLE_20db/Log.mat","./data_log/localization/MC20/MLE_30db/Log.mat","./data_log/localization/MC20/MLE_50db/Log.mat","./data_log/localization/MC20/MLE_40db/Log.mat"];
-groupD = ["./data_log/localization/MC20/MAP_5db/Log.mat","./data_log/localization/MC20/MAP_10db/Log.mat","./data_log/localization/MC20/MAP_20db/Log.mat","./data_log/localization/MC20/MLE_30db/Log.mat","./data_log/localization/MC20/MAP_50db/Log.mat","./data_log/localization/MC20/MAP_40db/Log.mat"];
+groupA = ["./final_data_log/localization/MC20/MLE_5db/Log.mat","./final_data_log/localization/MC20/MLE_10db/Log.mat","./final_data_log/localization/MC20/MLE_20db/Log.mat","./final_data_log/localization/MC20/MLE_30db/Log.mat","./final_data_log/localization/MC20/MLE_40db/Log.mat","./final_data_log/localization/MC20/MLE_50db/Log.mat"];
+groupB = ["./final_data_log/localization/MC20/MAP_5db/Log.mat","./final_data_log/localization/MC20/MAP_10db/Log.mat","./final_data_log/localization/MC20/MAP_20db/Log.mat","./final_data_log/localization/MC20/MAP_30db/Log.mat","./final_data_log/localization/MC20/MAP_40db/Log.mat","./final_data_log/localization/MC20/MAP_50db/Log.mat"];
+% groupC = ["../ADMM-EKF/data_log/MC10/kf_10db/Log.mat", "../ADMM-EKF/data_log/MC10/kf_20db/Log.mat","../ADMM-EKF/data_log/MC10/kf_30db/Log.mat","../ADMM-EKF/data_log/MC10/kf_40db/Log.mat","../ADMM-EKF/data_log/MC10/kf_50db/Log.mat"];
+groupC = ["../ADMM-EKF/data_log/MC2/kf_5db/Log.mat","../ADMM-EKF/data_log/MC2/kf_10db/Log.mat", "../ADMM-EKF/data_log/MC2/kf_20db/Log.mat","../ADMM-EKF/data_log/MC2/kf_30db/Log.mat","../ADMM-EKF/data_log/MC2/kf_40db/Log.mat","../ADMM-EKF/data_log/MC2/kf_50db/Log.mat"];
 
-groupE = ["./data_log/localization/MC20/MAP_5db_change_sigma/Log.mat","./data_log/localization/MC20/MAP_10db_change_sigma/Log.mat","./data_log/localization/MC20/MAP_20db_change_sigma/Log.mat","./data_log/localization/MC20/MAP_30db_change_sigma/Log.mat","./data_log/localization/MC20/MAP_50db_change_sigma/Log.mat","./data_log/localization/MC20/MAP_40db_change_sigma/Log.mat"];
-groupF = ["./data_log/localization/MC20/MLE_5db_change_sigma/Log.mat","./data_log/localization/MC20/MLE_10db_change_sigma/Log.mat","./data_log/localization/MC20/MLE_20db_change_sigma/Log.mat","./data_log/localization/MC20/MLE_30db_change_sigma/Log.mat","./data_log/localization/MC20/MLE_50db_change_sigma/Log.mat","./data_log/localization/MC20/MLE_40db_change_sigma/Log.mat"];
+% groupD = % DEKF
 
-groupG = ["./final_data_log/localization/MC20/MAP_5db/Log.mat","./final_data_log/localization/MC20/MAP_10db/Log.mat","./final_data_log/localization/MC20/MAP_20db/Log.mat","./final_data_log/localization/MC20/MAP_30db/Log.mat","./final_data_log/localization/MC20/MAP_40db/Log.mat","./final_data_log/localization/MC20/MAP_50db/Log.mat"];
-groupH = ["./final_data_log/localization/MC20/MLE_5db/Log.mat","./final_data_log/localization/MC20/MLE_10db/Log.mat","./final_data_log/localization/MC20/MLE_20db/Log.mat","./final_data_log/localization/MC20/MLE_30db/Log.mat","./final_data_log/localization/MC20/MLE_40db/Log.mat","./final_data_log/localization/MC20/MLE_50db/Log.mat"];
 
-% groupC = ["./data_log/localization/MAP_5db_acc2/Log.mat","./data_log/localization/MAP_50db_acc2/Log.mat"]; % FIM + M*N*Q_inv
-% groupE = ["./data_log/localization/MAP_5db_1_noise_far/Log.mat","./data_log/localization/MAP_50db_1_noise_far/Log.mat"];
-% g
 groups(1).name  = "MLE";
-% groups(1).files = groupC;
-groups(1).files = groupH;
+groups(1).files = groupA;
 
 groups(2).name  = "MAP";
-% groups(2).files = groupD;
-groups(2).files = groupG;
+groups(2).files = groupB;
+
+groups(3).name  = "EKF";
+groups(3).files = groupC;
 
 
-% groups(1).name  = "MAP change (20)";
-% groups(1).files = groupE;
-% 
-% groups(2).name  = "MLE change(20)";
-% groups(2).files = groupF;
-% 
-% groups(1).name  = "MLE (20)";
-% groups(1).files = groupC;
-% 
-% groups(2).name  = "MAP (20)";
-% groups(2).files = groupD;
+
 
 results = plot_rmse_vs_snr_multi(groups, 'SemilogY', true,'ShowCRLB',false);
 % plot_convergence_iters_vs_snr_multi(groups);

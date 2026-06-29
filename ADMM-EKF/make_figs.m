@@ -502,20 +502,16 @@ classdef make_figs
             set(gca,'FontSize',25);
             hold on;
 
-
-            
-
-            gt = plot(true_trajectory(1, :, 1), true_trajectory(1, :, 2), '--sk', 'LineWidth', 2, 'DisplayName', 'True Trajectory','MarkerSize', 20);
+            gt = plot(true_trajectory(1, :, 1), true_trajectory(1, :, 2), '-.k', 'LineWidth', 2, 'DisplayName', 'True Trajectory','MarkerSize', 20);
             plot(network_topo.radar_pos(:,1), network_topo.radar_pos(:,2), 'r.', 'MarkerSize', 40, 'DisplayName', 'Sensor Nodes');
-            % pred = plot(estimated_trajectory(1,:), estimated_trajectory(2,:), '--ob', 'LineWidth', 2, 'DisplayName', 'Estimated Trajectory','MarkerSize', 10);
-            pred = plot(estimated_trajectory(1,:), estimated_trajectory(2,:), 'o', 'LineWidth', 2, 'DisplayName', 'Estimated Trajectory','MarkerSize', 10);
+            pred = plot(estimated_trajectory(1,:), estimated_trajectory(2,:), '--ob', 'LineWidth', 2, 'DisplayName', 'Estimated Trajectory','MarkerSize', 10);
 
             % Choose fewer index to visualized
             gtstep = max(1, floor(length(true_trajectory(1,:,2))/20));
             gt.MarkerIndices = 1:gtstep:length(true_trajectory(1,:,2));
             
-            % predstep = max(1, floor(length(estimated_trajectory(1,:))/20));
-            % pred.MarkerIndices = 1:predstep:length(estimated_trajectory(1,:));
+            predstep = max(1, floor(length(estimated_trajectory(1,:))/20));
+            pred.MarkerIndices = 1:predstep:length(estimated_trajectory(1,:));
 
             % Plot communication link
             for n = 1:network_topo.numNodes 
@@ -525,11 +521,11 @@ classdef make_figs
                      if (n == 1 & j == 1)
                          plot([network_topo.radar_pos(n,1),network_topo.radar_pos(neighbors_idx(j),1)],...
                          [network_topo.radar_pos(n,2),network_topo.radar_pos(neighbors_idx(j),2)],...
-                         '--k','LineWidth',1.5,'DisplayName','Communication link');
+                         '-k','LineWidth',1.5,'DisplayName','Communication link');
                      end
                      plot([network_topo.radar_pos(n,1),network_topo.radar_pos(neighbors_idx(j),1)],...
                          [network_topo.radar_pos(n,2),network_topo.radar_pos(neighbors_idx(j),2)],...
-                         '--k','LineWidth',1.5);
+                         '-k','LineWidth',1.5);
                 end
             end
 
@@ -592,7 +588,7 @@ classdef make_figs
             % ut = make_figs(10);
             % figure = ut.paperFig("double");
             set(gcf,'Color','white');
-            set(gca, 'FontName', 'Times New Roman');
+            % set(gca, 'FontName', 'Times New Roman');
             % set(gca,'FontSize',40);
             t = tiledlayout(4,1);
             for param = 1:4

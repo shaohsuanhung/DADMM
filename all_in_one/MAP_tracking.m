@@ -12,9 +12,9 @@ TYPE = "MAP";
 % -----------------------
 num_monte_carlo = 1;
 seed0 = 43;
-
+env.SNR_idx = 50;
 LOG_ENABLE = false;
-LOG_DIR = "./data_log";
+LOG_DIR = "./final_data_log";
 RUN_NAME = "tracking";
 
 % -----------------------
@@ -61,7 +61,7 @@ env.T = env.time_step / 2;
 env.B = 10e6 * ones(1,network_topo.numNodes);
 env.fs = 2*env.B;
 
-env.SNR_idx = 50;
+
 env.SNR_lin = 10^(env.SNR_idx/10);
 
 env.range_var   = (3 * env.c^2) / (8 * pi^2 * env.B(1)^2 * env.SNR_lin);
@@ -264,11 +264,12 @@ for mc = 1:num_monte_carlo
                 end
 
                 % local solve for each node
+                % Dual update 
                 for n = 1:network_topo.numNodes
                     for j = neighbors{n}
                         ADMM.Nu{n}(:,j) = ADMM.Nu_prev{n}(:,j) + ADMM.c_penalty' .* (ADMM.initial_values(:,n) - ADMM.update_z_prev{n}(:,j));
                     end
-                    
+                    % Primal update 
                     % if ((k == 1) || (TYPE == "MLE")) %Assume prior in k=1
                     if TYPE == "MLE"
                         % first step: use MLE likelihood

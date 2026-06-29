@@ -306,7 +306,7 @@ classdef ADMM_utils
         function postcrlb = calculatePCRLB(true_params, radar_positions, numNodes, M, lambda, Sigma, Q, Jk_prev, F)
             if Jk_prev == 0
                 FIM = ADMM_utils.calculateFIM(true_params, radar_positions, numNodes, M, lambda, Sigma, Q);
-                Jk = FIM +  numNodes*inv(Q);
+                Jk = FIM +  numNodes*inv(Q); % When T = 0, no 
                 postcrlb = inv(Jk);
 
             else

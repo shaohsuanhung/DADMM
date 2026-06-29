@@ -47,7 +47,7 @@ function results = plot_rmse_vs_time(curves, varargin)
 p = inputParser;
 p.addRequired('curves');
 p.addParameter('StateIdx', [1 2 3 4], @(v) isnumeric(v) && isvector(v) && numel(v)==4);
-p.addParameter('StateNames', {'$x$','$y$','$v_x$','$v_y$s'}, @(c) iscell(c) && numel(c)==4);
+p.addParameter('StateNames', {'x','y','v_x','v_y'}, @(c) iscell(c) && numel(c)==4);
 p.addParameter('SemilogY', false, @(b) islogical(b) && isscalar(b));
 p.addParameter('UseRaw', true, @(b) islogical(b) && isscalar(b));
 p.addParameter('TimeDim', 'auto', @(s) any(strcmpi(string(s), ["auto","cols","rows"])));
@@ -157,9 +157,8 @@ for s = 1:4
         end
     end
 
-    % ylabel(ax, sprintf('RMSE %s', stateNames{s}));
-    ylabel(ax, sprintf('RMSE %s', stateNames{s}),'Interpreter','latex');
-    ax.FontSize = 25;
+    ylabel(ax, sprintf('RMSE %s', stateNames{s}));
+    ax.FontSize = 20;
     if s == 1
         % title(ax, 'rMSE and CRLB vs time');
         ldg = legend(ax, hLegend, leg, 'Location','best','FontSize',15);
@@ -232,7 +231,7 @@ function results = plot_std_crlb_vs_time(curves, varargin)
 p = inputParser;
 p.addRequired('curves');
 p.addParameter('StateIdx', [1 2 3 4], @(v) isnumeric(v) && isvector(v) && numel(v)==4);
-p.addParameter('StateNames', {'$x$','$y$','$v_x$','$v_y$'}, @(c) iscell(c) && numel(c)==4);
+p.addParameter('StateNames', {'x','y','v_x','v_y'}, @(c) iscell(c) && numel(c)==4);
 p.addParameter('SemilogY', false, @(b) islogical(b) && isscalar(b));
 p.addParameter('UseRaw', true, @(b) islogical(b) && isscalar(b));
 p.addParameter('TimeDim', 'auto', @(s) any(strcmpi(string(s), ["auto","cols","rows"])));
@@ -310,15 +309,7 @@ for s = 1:4
 
         if useSemi
             % y_rmse = max(y_rmse, realmin('double'));
-            % noise = (1e-3)*(1*rand(size(y_std)));
-            if results(i).snr_dB == 10
-                noise = 6e-4;
-            elseif results(i).snr_dB == 20
-                noise = 5e-4;
-            else
-                noise = 1e-4;
-            end
-            y_rmse = max(y_std, realmin('double'))+noise;
+             y_rmse = max(y_std, realmin('double'));
             y_crlb = max(y_crlb, realmin('double'));
             h1 = semilogy(ax, t, y_rmse, '-s', 'LineWidth', 1.5);
             h1.MarkerSize = 15;
@@ -345,15 +336,14 @@ for s = 1:4
                 labelBase = labelBase + sprintf('', results(i).snr_dB);
             end
             hLegend(end+1) = h1; %#ok<AGROW>
-            leg(end+1) = labelBase + " D-EKF"; %#ok<AGROW>
+            leg(end+1) = labelBase + " std"; %#ok<AGROW>
             hLegend(end+1) = h2; %#ok<AGROW>
             leg(end+1) = labelBase + " PCRLB"; %#ok<AGROW>
         end
     end
 
-    % ylabel(ax, sprintf('RMSE %s', stateNames{s}),'Interpreter','latex');
-    ylabel(ax, sprintf('RMSE %s', stateNames{s}),'Interpreter','latex');
-    ax.FontSize = 25;
+    ylabel(ax, sprintf('std %s', stateNames{s}));
+    ax.FontSize = 20;
     if s == 1
         % title(ax, 'rMSE and CRLB vs time');
         ldg = legend(ax, hLegend, leg, 'Location','best','FontSize',15);
@@ -367,7 +357,7 @@ for s = 1:4
     end
     % xticks([5 10 20 30 40 50]);
     % xlim([0 t(size(t,1))]);
-    xlim([0.5 t(size(t,1))]);
+    % xlim([0.5 t(size(t,1))]);
     grid on;
 end
 
@@ -569,20 +559,35 @@ clc;clear;close all
 % curves(1).name = "Dist. KF 5db";
 % curves(1).file = "./data_log/kf_5db/Log.mat";   % or "/mnt/data/Log.mat" if MATLAB can see that path
 
-curves(1).name = "10db";
-curves(1).file = "./data_log/kf_10db/Log.mat";   % or "/mnt/data/Log.mat" if MATLAB can see that path
+% curves(1).name = "10db";
+% curves(1).file = "./data_log/kf_10db/Log.mat";   % or "/mnt/data/Log.mat" if MATLAB can see that path
+% 
+% curves(2).name = " 20db";
+% curves(2).file = "./data_log/kf_20db/Log.mat";   % or "/mnt/data/Log.mat" if MATLAB can see that path
+% 
+% curves(3).name = "30db";
+% curves(3).file = "./data_log/kf_30db/Log.mat";   % or "/mnt/data/Log.mat" if MATLAB can see that path
+% curves(4).name = "50db";
+% curves(4).file = "./data_log/kf_50db/Log.mat";   % or "/mnt/data/Log.mat" if MATLAB can see that path
 
-curves(2).name = " 20db";
-curves(2).file = "./data_log/kf_20db/Log.mat";   % or "/mnt/data/Log.mat" if MATLAB can see that path
+curves(1).name = "5db";
+curves(1).file = "./data_log/kf_5db/Log.mat";   % or "/mnt/data/Log.mat" if MATLAB can see that path
 
-curves(3).name = "30db";
-curves(3).file = "./data_log/kf_30db/Log.mat";   % or "/mnt/data/Log.mat" if MATLAB can see that path
-curves(4).name = "50db";
-curves(4).file = "./data_log/kf_50db/Log.mat";   % or "/mnt/data/Log.mat" if MATLAB can see that path
+curves(2).name = "10db";
+curves(2).file = "./data_log/kf_10db/Log.mat";   % or "/mnt/data/Log.mat" if MATLAB can see that path
+
+curves(3).name = "20db";
+curves(3).file = "./data_log/kf_20db/Log.mat";   % or "/mnt/data/Log.mat" if MATLAB can see that path
+
+curves(4).name = "30db";
+curves(4).file = "./data_log/kf_30db/Log.mat";   % or "/mnt/data/Log.mat" if MATLAB can see that path
+
+% curves(3).name = "50db";
+% curves(3).file = "./data_log/kf_50db/Log.mat";   % or "/mnt/data/Log.mat" if MATLAB can see that path
 
 % curves(6).name = "Dist. KF 3db";
 % curves(6).file = "./data_log/kf_3db/Log.mat";   % or "/mnt/data/Log.mat" if MATLAB can see that path
 
 
-plot_std_crlb_vs_time(curves, 'UseRaw', true, 'SemilogY', true, 'TimeDim', 'auto');
+% plot_std_crlb_vs_time(curves, 'UseRaw', true, 'SemilogY', true, 'TimeDim', 'auto');
 plot_rmse_vs_time(curves, 'UseRaw', true, 'SemilogY', true, 'TimeDim', 'auto');

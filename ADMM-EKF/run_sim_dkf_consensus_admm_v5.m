@@ -35,11 +35,11 @@ TYPE       = "DKF_ADMM";
 
 %% ---------------- P1: Simulation parameters ----------------
 NUM_CPI_PER_MEA = 64;
-TRACK_TIME      = 8;
+TRACK_TIME      = 12;
 dt              = 1e-2;
 NUM_TAR         = 1;
 M_total         = NUM_CPI_PER_MEA * TRACK_TIME;
-
+env.SNR_idx = 50;
 % -----------------------
 % MC config
 % -----------------------
@@ -57,7 +57,7 @@ seed0           = 43;
 MEASUREMENT_MODE     = "local_neighbor";   % "local_neighbor" or "self_only"
 ADMM_OBJECTIVE_TYPE  = "MAP";              % "MAP" or "MLE"
 
-ADMM_MAX_ITER        = 500;
+ADMM_MAX_ITER        = 1500;
 ADMM_TOLERANCE       = 1e-3;
 ADMM_C_PENALTY       = [100, 100, 15, 15];
 ADMM_VERBOSE_EVERY   = 50;
@@ -67,6 +67,7 @@ ADMM_VERBOSE_EVERY   = 50;
 % concrete recursive EKF time step.
 rng(seed0, "twister");
 SNAPSHOT_T = randi(M_total);
+% SNAPSHOT_T = 3;
 fprintf("Random ADMM convergence snapshot will be plotted at t=%d/%d.\n", ...
     SNAPSHOT_T, M_total);
 
@@ -128,7 +129,7 @@ env.time_step = dt;
 env.B  = 10e6 * ones(1, network_topo.numNodes);
 env.fs = 2 * env.B;
 
-env.SNR_idx = 50;
+
 env.SNR_lin = 10^(env.SNR_idx/10);
 
 env.range_var   = (3 * env.c^2) / (8 * pi^2 * env.B(1)^2 * env.SNR_lin);
@@ -216,7 +217,7 @@ for mc = 1:num_monte_carlo
     doppler_true = zeros(NUM_TAR, network_topo.numNodes, M_total);
     meas_true    = zeros(NUM_TAR, network_topo.numNodes, 2*M_total);
 
-    [range_true, doppler_true, meas_true] = ut.gt_data_generation_tracking( ...
+    [range_true, doppler_true, meas_true] = ut.gt_data_generation_tracking_ekf( ...
         range_true, doppler_true, meas_true, target, network_topo, env, ...
         M_total, NUM_TAR);
 
@@ -265,7 +266,7 @@ for mc = 1:num_monte_carlo
             for n = 1:network_topo.numNodes
                 x_dadmm{n} = x_nodes_admm(:, n);
                 % x_dadmm{n} = x_consensus; % Prior as consensus result
-                % P_dadmm{n} = P_nodes_admm{n};
+                P_dadmm{n} = P_nodes_admm{n};
                 all_est{t,n} = x_nodes_admm(:, n);
             end
 
@@ -275,6 +276,7 @@ for mc = 1:num_monte_carlo
             P_consensus = zeros(4,4);
             for n = 1:network_topo.numNodes
                 P_consensus = P_consensus + P_nodes_admm{n};
+                % P_consensus = P_nodes_admm{n};
             end
             P_consensus = symmetrize(P_consensus / network_topo.numNodes);
 
@@ -328,7 +330,7 @@ for mc = 1:num_monte_carlo
                     snapshot = admm_info.x_hist;
                     % snapshot = permute(snapshot,[2,1,3]);
                     % snapshot_true = [target.target_position(1,t,1),target.target_position(1,t,2),14.141,14.141];
-                    snapshot_true = [target.target_state(1,t,1),target.target_state(1,t,2),target.target_state(1,t,3),target.target_state(1,t,4)];
+                    snapshot_true = true_params_k;
                     snapshot_ctrl = x_ca; % Get the result of Ctrl from CKF
             end
         end
@@ -394,7 +396,7 @@ if DEBUG
         plot(start_idx:tEnd, cellfun(@(x) x(1), all_est(start_idx:tEnd,n)), ...
             'DisplayName', "post." + network_topo.labels{n});
     end
-    plot(time_idx, target.target_position(1,:,1), ...
+    plot(time_idx, target.target_state(1,:,1), ...
         'DisplayName', 'GT', 'LineStyle', '--', 'Color', 'k');
     title("DKF + ADMM X"); legend('show'); grid on; box on;
 
@@ -403,7 +405,7 @@ if DEBUG
         plot(start_idx:tEnd, cellfun(@(x) x(2), all_est(start_idx:tEnd,n)), ...
             'DisplayName', "post." + network_topo.labels{n});
     end
-    plot(time_idx, target.target_position(1,:,2), ...
+    plot(time_idx, target.target_state(1,:,2), ...
         'DisplayName', 'GT', 'LineStyle', '--', 'Color', 'k');
     title("DKF + ADMM Y"); legend('show'); grid on; box on;
 
@@ -412,7 +414,9 @@ if DEBUG
         plot(start_idx:tEnd, cellfun(@(x) x(3), all_est(start_idx:tEnd,n)), ...
             'DisplayName', "post." + network_topo.labels{n});
     end
-    yline(target.true_params(3), 'k--', 'GT');
+    % yline(target.true_params(3), 'k--', 'GT');
+    plot(time_idx, target.target_state(1,:,3), ...
+        'DisplayName', 'GT', 'LineStyle', '--', 'Color', 'k');
     title("DKF + ADMM Vx"); legend('show'); grid on; box on;
 
     subplot(2,2,4); hold on;
@@ -420,7 +424,9 @@ if DEBUG
         plot(start_idx:tEnd, cellfun(@(x) x(4), all_est(start_idx:tEnd,n)), ...
             'DisplayName', "post." + network_topo.labels{n});
     end
-    yline(target.true_params(4), 'k--', 'GT');
+    % yline(target.true_params(4), 'k--', 'GT');
+    plot(time_idx, target.target_state(1,:,4), ...
+        'DisplayName', 'GT', 'LineStyle', '--', 'Color', 'k');
     title("DKF + ADMM Vy"); legend('show'); grid on; box on;
 end
 
@@ -584,9 +590,12 @@ function [x_bar, x_nodes, P_nodes, info] = consensus_admm_nonlinear_tracking( ..
                 otherwise
                     error('Wrong ADMM_OBJECTIVE_TYPE setting: %s', string(objective_type));
             end
-
+            % debug_fun = @(x) debug_objective_wrapper(fun, x, n, iteration);
+            % all_estimations(:,n) = fmincon(debug_fun, ADMM.initial_values(:,n), ...
+            %     [], [], [], [], ADMM.lb, ADMM.ub, [], ADMM.solver);
             all_estimations(:,n) = fmincon(fun, ADMM.initial_values(:,n), ...
                 [], [], [], [], ADMM.lb, ADMM.ub, [], ADMM.solver);
+
         end
 
         ADMM.all_estimations_every_iter(:,:,iteration) = all_estimations;
@@ -680,7 +689,7 @@ function [x_bar, x_nodes, P_nodes, info] = consensus_admm_nonlinear_tracking( ..
     % end
     info_mtxs = cell(1,N);
     for n = 1:N
-        hn = models_ut.LocalMeasureModel_dkf(x_pred_nodes{n}, n, network_topo, env);            % 2x1 (unwhitened physical)
+        % hn = models_ut.LocalMeasureModel_dkf(x_pred_nodes{n}, n, network_topo, env);            % 2x1 (unwhitened physical)
         Hn = models_ut.LocalMeasureModelJacobian_dkf(x_pred_nodes{n}, n, network_topo, env);    % 2x4 (unwhitened)
         info_mtxs{n} = Hn'*env.Sigma*Hn + inv(P_pred_nodes{n});
     end
@@ -712,7 +721,7 @@ function [range_local, doppler_local, radarpos_local, numNodes_local, idx_set] =
 
     % The recursive simulation updates at every measurement sample, so the
     % local M in ADMM_utils.logLikelihood/MAP is set to 1.  The resulting
-    % matrices have size [1 x numNodes_local].
+    % matrices have size [1 x numNodes_local]. -> Can be set to NUM_CPI
     range_local   = zeros(1, numNodes_local);
     doppler_local = zeros(1, numNodes_local);
     for a = 1:numNodes_local
