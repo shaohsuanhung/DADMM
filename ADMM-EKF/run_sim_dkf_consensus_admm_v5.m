@@ -7,7 +7,7 @@ fig_ut = make_figs(10);
 DEBUG      = true;
 PRE_WHITEN = false;   % handled inside dkf_neighbor_update_pw.m
 SAVE_LOG   = true;
-Log_DIR    = "./data_log";
+Log_DIR    = "./data_log/verify_CRLB4";
 RUN_NAME   = "dkf_consensus_admm";
 TYPE       = "DKF_ADMM";
 
@@ -35,16 +35,22 @@ TYPE       = "DKF_ADMM";
 
 %% ---------------- P1: Simulation parameters ----------------
 NUM_CPI_PER_MEA = 64;
-TRACK_TIME      = 12;
+TRACK_TIME      = 1;
 dt              = 1e-2;
 NUM_TAR         = 1;
 M_total         = NUM_CPI_PER_MEA * TRACK_TIME;
-env.SNR_idx = 50;
+env.SNR_idx = 40;
 % -----------------------
 % MC config
 % -----------------------
-num_monte_carlo = 1;
+num_monte_carlo = 10;
 seed0           = 43;
+
+% Bayesian PCRLB uses an independent state Monte Carlo expectation.  This
+% is intentionally separate from num_monte_carlo, which controls the main
+% simulation's measurement-noise trials.
+PCRLB_NUM_STATE_SAMPLES = 2000;
+PCRLB_SEED              = seed0 + 100000;
 
 %% ---------------- ADMM config ----------------
 % The ADMM part follows the nonlinear consensus-ADMM style in which each
@@ -53,14 +59,14 @@ seed0           = 43;
 %
 % For a recursive EKF-style simulation, MAP is the natural choice because
 % the predicted state/covariance at each node provides the prior. MLE is
-% kept as an option for debugging or for the first step if desired.
+% kept as an option for debugging o for the first step if desired.
 MEASUREMENT_MODE     = "local_neighbor";   % "local_neighbor" or "self_only"
 ADMM_OBJECTIVE_TYPE  = "MAP";              % "MAP" or "MLE"
 
-ADMM_MAX_ITER        = 1500;
+ADMM_MAX_ITER        = 2000;
 ADMM_TOLERANCE       = 1e-3;
 ADMM_C_PENALTY       = [100, 100, 15, 15];
-ADMM_VERBOSE_EVERY   = 50;
+ADMM_VERBOSE_EVERY   = 150;
 
 % Randomly pick one sample index for the ADMM node-convergence snapshot.
 % This is selected once so that the plotted snapshot corresponds to one
@@ -69,7 +75,7 @@ rng(seed0, "twister");
 SNAPSHOT_T = randi(M_total);
 % SNAPSHOT_T = 3;
 fprintf("Random ADMM convergence snapshot will be plotted at t=%d/%d.\n", ...
-    SNAPSHOT_T, M_total);
+SNAPSHOT_T, M_total);
 
 %% ---------------- Result Log -------------
 Results = struct();
@@ -102,7 +108,7 @@ network_topo.numNodes = 10;
 theta = linspace(0, 2*pi, network_topo.numNodes+1);
 network_topo.theta = theta(1:end-1);
 network_topo.radius = 30;
-network_topo.com_rad_CR = 30;
+network_topo.com_rad_CR = 500;
 
 network_topo.radar_pos = network_topo.radius * ...
     [cos(network_topo.theta); sin(network_topo.theta)]';
@@ -115,6 +121,9 @@ network_topo.labels = arrayfun(@(i) sprintf("N%d", i), ...
     network_topo.radar_pos, network_topo.com_rad_CR, network_topo.numNodes);
 
 neighbors = ut.get_neighbors(network_topo.adj_matrix, network_topo.numNodes);
+% %% Test on different connectivity
+% NUM_NEI_NODE = 2;
+
 
 %% ---------------- Environment / measurement noise ----------------
 F = [1 0 dt 0;
@@ -152,7 +161,7 @@ end
 
 %% ---------------- Target ----------------
 target.initial_position = [-30, -30];
-target.speed = 20;
+target.speed = 50;
 target.angle_degrees = 45;
 target.direction = [cosd(target.angle_degrees), sind(target.angle_degrees)];
 target.true_params = [target.initial_position(1), target.initial_position(2), ...
@@ -176,20 +185,55 @@ target.target_state = reshape([squeeze(target.target_position), repmat([target.s
                                 ,[1,M_total,4]);
 
 % Same randomized reference trajectory used in run_sim_dkf_neighbor_consensus.m.
-pos = ut.gen_ref_trajectory(M_total, [-30 20 -30 25], dt, target.speed);
-vx = gradient(pos(:,1), dt); vy = gradient(pos(:,2), dt);
-target.target_state = reshape([pos, [vx,vy]],[1,M_total,4]);
-target.target_position = reshape(pos, [1, M_total, 2]);
+% pos = ut.gen_ref_trajectory(M_total, [-30 20 -30 25], dt, target.speed);
+% vx = gradient(pos(:,1), dt); vy = gradient(pos(:,2), dt);
+% target.target_state = reshape([pos, [vx,vy]],[1,M_total,4]);
+% target.target_position = reshape(pos, [1, M_total, 2]);
 
+
+%Other trajectory
+% [t, states, info] = generateNonlinearTrajectory( ...
+%     T = M_total*dt, ...
+%     dt = dt, ...
+%     start_pos = [-30.0, -30.0], ...
+%     initial_speed =target.speed, ...
+%     initial_heading_deg = 45.0, ...
+%     end_pos = [20.0, 20.0], ...
+%     enforce_endpoint = true, ...
+%     speed_amp = 0.4, ...
+%     speed_freq = 0.15, ...
+%     turn_amp_deg = 50.0, ...
+%     turn_freq = 0.1, ...
+%     use_randomness = true ...
+% );
+% target.target_state = reshape(states,[1,M_total,4]);
+% target.target_position = reshape(states(:,1:2), [1, M_total, 2]);
+% Ensure target trajectory
+% fig_ut.plot_setup(target.target_position, network_topo);
 %% ---------------- DKF / CV model ----------------
-env.Q = 1e-2 * [dt^4/4, 0,      dt^3/2, 0;
+env.Q = 1 * [dt^4/4, 0,      dt^3/2, 0;
                 0,      dt^4/4, 0,      dt^3/2;
                 dt^3/2, 0,      dt^2,   0;
                 0,      dt^3/2, 0,      dt^2];
 
-P0 = diag([1e6, 1e6, 1e4, 1e4]);
-% x0 = [-30; -30; 14.1412; 14.1412];
-x0 = squeeze(target.target_state(1,1,:));
+P0 = diag([1e4, 1e4, 1e6, 1e6]);
+% P0 = diag([1e2, 1e2, 1e6, 1e6]);
+x0 = [0; 0; 0; 0];
+% x0 = squeeze(target.target_state(1,1,:));
+
+%% ---------------- Bayesian expected-FIM PCRLB ----------------
+% Compute the complete bound once.  The helper samples x0 ~ N(mu0,P0) and
+% w ~ N(0,Q), averages H'*(Sigma\H) before inversion, and treats the first
+% measurement as an observation of the initial state.  Always pass the
+% physical covariance env.Sigma because the helper Jacobian is unwhitened.
+mu0_pcrlb = target.true_params(:);
+[PCRLB_all, PCRLB_info] = calculate_pcrlb_v5( ...
+    mu0_pcrlb, P0, F, env.Q, network_topo.radar_pos, ...
+    env.lambda, env.Sigma, M_total, PCRLB_NUM_STATE_SAMPLES, ...
+    'Seed', PCRLB_SEED);
+
+% Canonical, nonduplicated representation: [state x state x time].
+Results.PCRLB_Bayes = PCRLB_all;
 
 %% ---------------- Monte Carlo simulation ----------------
 for mc = 1:num_monte_carlo
@@ -200,10 +244,13 @@ for mc = 1:num_monte_carlo
     P_dadmm = cell(1, network_topo.numNodes);
     for n = 1:network_topo.numNodes
         x_dadmm{n} = x0 - [network_topo.radar_pos(n,1),network_topo.radar_pos(n,2),0,0]';
+        % P_dadmm{n} = P0;
+        % x_dadmm{n} = squeeze(target.target_state(1,1,:));
         P_dadmm{n} = P0;
     end
 
     % Centralized EKF baseline.
+    x0 = squeeze(target.target_state(1,1,:));
     x_ca = x0;
     P_ca = P0;
 
@@ -273,14 +320,12 @@ for mc = 1:num_monte_carlo
             % For logging, use the mean of node-wise posterior covariances
             % as an approximate covariance summary. The nonlinear fmincon
             % ADMM step itself does not directly return a covariance matrix.
-            P_consensus = zeros(4,4);
+            P_consensus = zeros(4);
             for n = 1:network_topo.numNodes
                 P_consensus = P_consensus + P_nodes_admm{n};
-                % P_consensus = P_nodes_admm{n};
             end
             P_consensus = symmetrize(P_consensus / network_topo.numNodes);
-
-
+           
 % ------------------------------------------------------------
             % 4) Centralized EKF baseline using all radar measurements once
             % ------------------------------------------------------------
@@ -310,16 +355,9 @@ for mc = 1:num_monte_carlo
             Results.estimations_CA_raw{mc, t}       = x_ca(:).';
             Results.estimations_CA_sigma_raw{mc, t} = P_ca;
 
-            if t ~= 1
-                Results.CRLB{mc, t} = ut.calculatePCRLB(true_params_k, ...
-                    network_topo.radar_pos, network_topo.numNodes, ...
-                    NUM_CPI_PER_MEA, env.lambda, env.Sigma_filter, env.Q, ...
-                    inv(Results.CRLB{mc, t-1}), F);
-            else
-                Results.CRLB{mc, t} = ut.calculatePCRLB(true_params_k, ...
-                    network_topo.radar_pos, network_topo.numNodes, ...
-                    NUM_CPI_PER_MEA, env.lambda, env.Sigma_filter, env.Q, 0, F);
-            end
+            % Keep the legacy cell field for existing plotting/log code.
+            % The Bayesian bound is independent of measurement-noise MC.
+            Results.CRLB{mc, t} = PCRLB_all(:,:,t);
 
             if DEBUG && (t == 1 || mod(t, 64) == 0)
                 fprintf("  ADMM iter=%d, r=%.3e, s=%.3e, est=[%.2f %.2f %.2f %.2f]\n", ...
@@ -350,9 +388,9 @@ for mc = 1:num_monte_carlo
             kBurst, Results.estimations_DA{mc, kBurst}, Results.estimations_CA{mc, kBurst});
     end
     %% Plotting
-    fig_ut.plot_trajectory_and_network(target.target_position, all_tracking_params_raw,network_topo);
-    fig_ut.plot_trajectory_and_network(target.target_position, all_tracking_params_ca_raw,network_topo);
-    fig_ut.plot_converge_mse_across_node_withCentrl(snapshot,snapshot_true,network_topo,snapshot_ctrl);
+    % fig_ut.plot_trajectory_and_network(target.target_position, all_tracking_params_raw,network_topo);
+    % fig_ut.plot_trajectory_and_network(target.target_position, all_tracking_params_ca_raw,network_topo);
+    % fig_ut.plot_converge_mse_across_node_withCentrl(snapshot,snapshot_true,network_topo,snapshot_ctrl);
 end
 
 %% ---------------- Save log ----------------
@@ -374,6 +412,7 @@ if SAVE_LOG
     Log.ADMM_MAX_ITER = ADMM_MAX_ITER;
     Log.ADMM_TOLERANCE = ADMM_TOLERANCE;
     Log.ADMM_C_PENALTY = ADMM_C_PENALTY;
+    Log.PCRLB_info = PCRLB_info;
     Log.Results = Results;
     save_mat_Log(Log_DIR, RUN_NAME, Log);
 end
@@ -537,7 +576,6 @@ function [x_bar, x_nodes, P_nodes, info] = consensus_admm_nonlinear_tracking( ..
                     (ADMM.initial_values(:,n) - ADMM.update_z_prev{n}(:,j));
             end
             
-            %TODO: Check here the correctness of the measurmeents
             [range_local, doppler_local, radarpos_local, numNodes_local, idx_set] = ...
                 local_measurement_for_admm(n, range_meas, doppler_meas, t, ...
                     network_topo, measurement_mode);
@@ -547,7 +585,6 @@ function [x_bar, x_nodes, P_nodes, info] = consensus_admm_nonlinear_tracking( ..
             prior_mean = cell(1, numNodes_local);
             prior_cov  = cell(1, numNodes_local);
 
-            %TODO: Check correctness here 
             for a = 1:numNodes_local
                 jj = idx_set(a);
                 prior_mean{a} = x_pred_nodes{jj};
@@ -625,9 +662,9 @@ function [x_bar, x_nodes, P_nodes, info] = consensus_admm_nonlinear_tracking( ..
             dr = zeros(nx,1);
             for j = neighbors{n}
                 primal_residual = primal_residual + ...
-                    sqrt(norm(all_estimations(:,n) - ADMM.update_z{n}(:,j))^2);
+                    norm(all_estimations(:,n) - ADMM.update_z{n}(:,j));
                 dual_residual = dual_residual + ...
-                    sqrt(norm(ADMM.Nu{n}(:,j) - ADMM.Nu_prev{n}(:,j))^2);
+                    norm(ADMM.Nu{n}(:,j) - ADMM.Nu_prev{n}(:,j));
                 pr = pr + abs(all_estimations(:,n) - ADMM.update_z{n}(:,j));
                 dr = dr + abs(ADMM.Nu{n}(:,j) - ADMM.Nu_prev{n}(:,j));
             end
@@ -670,37 +707,97 @@ function [x_bar, x_nodes, P_nodes, info] = consensus_admm_nonlinear_tracking( ..
     x_nodes = all_estimations;
     x_bar   = mean(all_estimations, 2);
 
-    % Approximate node covariance using the same local EKF linearized update
-    % as the baseline DKF. This is only for recursive covariance propagation
-    % and logging; the ADMM primal estimate itself is from fmincon.
+    %Approximate node covariance using the same local EKF linearized update
+    %as the baseline DKF. This is only for recursive covariance propagation
+    %and logging; the ADMM primal estimate itself is from fmincon.
     P_nodes = cell(1, N);
-    % for n = 1:N % H_{n,k}'*Sigma^{-1}*H_{n,k}
-    %     idx_set = get_measurement_index_set(n, network_topo, measurement_mode);
-    %     y_bar = stack_measurements(idx_set, range_meas, doppler_meas, t);
-    %     % [~, P_tmp, ~] = dkf_neighbor_update_pw( ...
-    %     %                 x_pred_nodes{n}, P_pred_nodes{n}, y_bar, idx_set, ...
-    %     %                 network_topo, env, models_ut);
-    %     % [~, P_tmp, ~] = dkf_neighbor_update( ...
-    %     %                 x_pred_nodes{n}, P_pred_nodes{n}, y_bar, idx_set, ...
-    %     %                 network_topo, env, models_ut);
-    %     % P_nodes{n} = symmetrize(P_tmp);
-    %     % Info mtx: H*Sigma*H + P^(-1)_{n,k|k-1}
-    % 
-    % end
-    info_mtxs = cell(1,N);
-    for n = 1:N
-        % hn = models_ut.LocalMeasureModel_dkf(x_pred_nodes{n}, n, network_topo, env);            % 2x1 (unwhitened physical)
-        Hn = models_ut.LocalMeasureModelJacobian_dkf(x_pred_nodes{n}, n, network_topo, env);    % 2x4 (unwhitened)
-        info_mtxs{n} = Hn'*env.Sigma*Hn + inv(P_pred_nodes{n});
-    end
+    for n = 1:N % H_{n,k}'*Sigma^{-1}*H_{n,k}
+        idx_set = get_measurement_index_set(n, network_topo, measurement_mode);
+        y_bar = stack_measurements(idx_set, range_meas, doppler_meas, t);
+        % [~, P_tmp, ~] = dkf_neighbor_update_pw( ...
+        %                 x_pred_nodes{n}, P_pred_nodes{n}, y_bar, idx_set, ...
+        %                 network_topo, env, models_ut);
+        [~, P_tmp, ~] = dkf_neighbor_update( ...
+                        x_pred_nodes{n}, P_pred_nodes{n}, y_bar, idx_set, ...
+                        network_topo, env, models_ut);
+        P_nodes{n} = symmetrize(P_tmp);
+        % Info mtx: H*Sigma*H + P^(-1)_{n,k|k-1}
 
-    for n = 1:N
-        P_nodes{n} = inv(info_mtxs{n});
-        for j = neighbors{n} 
-            % P_nodes{n} = inv(inv(P_nodes{n})+inv(P_nodes{j})); %Sum of information of self + neighbor nodes
-            P_nodes{n} = P_nodes{n} + inv(info_mtxs{j});
-        end
     end
+    % info_mtxs = cell(1,N);
+    % for n = 1:N
+    %     % hn = models_ut.LocalMeasureModel_dkf(x_pred_nodes{n}, n, network_topo, env);            % 2x1 (unwhitened physical)
+    %     Hn = models_ut.LocalMeasureModelJacobian_dkf(x_pred_nodes{n}, n, network_topo, env);    % 2x4 (unwhitened)
+    %     % info_mtxs{n} = Hn'*(env.Sigma\Hn) + inv(P_pred_nodes{n});
+    %     info_mtxs{n} = Hn'*(env.Sigma\Hn) + diag([1e-12,1e-12,1e-12,1e-12]);
+    % end
+    % 
+    % for n = 1:N
+    %     % P_nodes{n} = inv(info_mtxs{n});
+    %     neighbors_info = zeros(size(info_mtxs{n}));
+    %     for j = neighbors{n} 
+    %         % P_nodes{n} = inv(inv(P_nodes{n})+inv(P_nodes{j})); %Sum of information of self + neighbor nodes
+    %         % P_nodes{n} = P_nodes{n} + inv(info_mtxs{j});
+    %          neighbors_info = neighbors_info + info_mtxs{j};
+    %     end
+    %     P_nodes{n} = inv(inv(P_pred_nodes{n})+ (neighbors_info + info_mtxs{n}));
+    % end
+
+    % %------------------------------------------------------------
+    % % Posterior covariance consensus in information form
+    % %
+    % % J_post = mean_n(inv(P_pred_n))
+    % %          + sum_n(H_n' * inv(R) * H_n)
+    % %
+    % % All nodes receive the same posterior covariance.
+    % % ------------------------------------------------------------
+    % P_nodes = cell(1, N);
+    % 
+    % J_prior       = zeros(nx, nx);
+    % J_measurement = zeros(nx, nx);
+    % 
+    % for n = 1:N
+    %     % --------------------------------------------------------
+    %     % 1) Predicted prior information
+    %     % --------------------------------------------------------
+    %     P_pred_n = symmetrize(P_pred_nodes{n});
+    % 
+    %     % Numerically preferable to inv(P_pred_n).
+    %     J_prior = J_prior + (P_pred_n \ eye(nx));
+    % 
+    %     % --------------------------------------------------------
+    %     % 2) Measurement information
+    %     %
+    %     % x_pred_nodes contains global target coordinates, whereas
+    %     % LocalMeasureModelJacobian_dkf expects coordinates relative
+    %     % to radar n.
+    %     % --------------------------------------------------------
+    %     x_relative = x_pred_nodes{n};
+    %     x_relative(1:2) = x_relative(1:2) ...
+    %         - network_topo.radar_pos(n, :).';
+    % 
+    %     Hn = models_ut.LocalMeasureModelJacobian_dkf( ...
+    %         x_relative, n, network_topo, env);
+    % 
+    %     Jn_measurement = Hn' * (env.Sigma \ Hn);
+    %     J_measurement = J_measurement ...
+    %         + symmetrize(Jn_measurement);
+    % end
+    % 
+    % % The predicted covariances describe the same target state.
+    % % Average their information instead of adding correlated priors.
+    % J_prior = J_prior / N;
+    % 
+    % % Every physical radar measurement is added exactly once.
+    % J_post = symmetrize(J_prior + J_measurement);
+    % 
+    % % Numerically preferable to inv(J_post).
+    % P_global = symmetrize(J_post \ eye(nx));
+    % 
+    % % Covariance consensus: all nodes use the same posterior covariance.
+    % for n = 1:N
+    %     P_nodes{n} = P_global;
+    % end
 
     info = struct();
     info.iter = iteration;

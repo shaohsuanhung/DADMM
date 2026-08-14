@@ -7,7 +7,7 @@ fig_ut = make_figs(10);
 %% ===== Config =====
 DEBUG = true;
 SAVE_LOG = true;
-LOG_DIR = "./data_log/test";
+LOG_DIR = "./data_log/pcrlb";
 RUN_NAME = "centralizedEKF";
 TYPE="CKF";
 
@@ -16,7 +16,7 @@ RNG_SEED = 7;
 
 num_monte_carlo = 1;
 NUM_CPI_PER_MEA = 64;
-TRACK_TIME = 30;
+TRACK_TIME = 6;
 time_step = 1e-2;
 
 %% ===== Network =====
@@ -38,6 +38,15 @@ target.initial_position = [-30, -30];
 target.speed = 20;
 target.angle_degrees = 45 * ones(1, num_monte_carlo);
 
+
+% Same randomized reference trajectory used in run_sim_dkf_neighbor_consensus.m.
+pos = ut.gen_ref_trajectory(NUM_CPI_PER_MEA, [-30 20 -30 25], time_step, target.speed);
+vx = gradient(pos(:,1), time_step); vy = gradient(pos(:,2), time_step);
+target.target_state = reshape([pos, [vx,vy]],[1,NUM_CPI_PER_MEA,4]);
+target.target_position = reshape(pos, [1, NUM_CPI_PER_MEA, 2]);
+
+
+
 %% ===== Environment =====
 env.c = 3e8;
 env.lambda = env.c / 10e9;
@@ -46,7 +55,7 @@ env.T = env.time_step / 2;
 env.B = 10e6 * ones(1,network_topo.numNodes);
 env.fs = 2*env.B;
 
-env.SNR_idx = 50;
+env.SNR_idx = 10;
 env.SNR_lin = 10^(env.SNR_idx/10);
 
 env.range_var   = (3 * env.c^2) / (8 * pi^2 * env.B(1)^2 * env.SNR_lin);
@@ -204,7 +213,8 @@ end
 % fig_ut.plot_geometry_and_target(network_topo, squeeze(target.target_position(1,:,:)));
 % fig_ut.plot_trajectory_and_network(target.target_position,Results.estimations_CA_raw,network_topo);
 % mse_plot(mse);
-plot_gif(target.target_position,Results.estimations_CA_raw,network_topo,mse);
+%% To make gif
+% plot_gif(target.target_position,Results.estimations_CA_raw,network_topo,mse);
 if SAVE_LOG
     Log = struct();
     Log.RUN_NAME = RUN_NAME;

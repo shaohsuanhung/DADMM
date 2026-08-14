@@ -49,7 +49,8 @@ classdef models
             dist_node_tar = @(x,y) sqrt((x)^2 + (y)^2);
             % r = max(dist_node_tar(x,y,network_topo.radar_pos(idx,:)),1); % Avoid division by zero for stability
             r = max(dist_node_tar(x,y),1); % Avoid division by zero for stability
-            f =  ((v_x*(x))+(v_y*(y)))/(env.lambda*r);
+            % f =  ((v_x*(x))+(v_y*(y)))/(env.lambda*r);
+            f =  ((v_x*(x))+(v_y*(y)))/(env.lambda*r*0.5);
             % z = env.pre_whit_L*[r; f];
             z = [r; f];
 

@@ -13,8 +13,8 @@ TYPE = "MAP";
 num_monte_carlo = 1;
 seed0 = 43;
 env.SNR_idx = 50;
-LOG_ENABLE = false;
-LOG_DIR = "./final_data_log";
+LOG_ENABLE = true;
+LOG_DIR = "./0708_tracking";
 RUN_NAME = "tracking";
 
 % -----------------------
@@ -22,7 +22,7 @@ RUN_NAME = "tracking";
 % -----------------------
 NUM_TAR = 1;
 NUM_CPI_PER_MEA = 64;
-TRACK_TIME = 12;
+TRACK_TIME = 30;
 time_step = 1e-2;
 
 Results = struct();

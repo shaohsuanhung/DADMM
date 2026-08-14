@@ -541,6 +541,64 @@ classdef make_figs
             exportgraphics(fig, 'output.pdf', 'ContentType', 'vector');
 
         end
+
+        function plot_trajectory_and_network_CA_DA(obj, true_trajectory, estimated_trajectory_DA, estimated_trajectory_CA,network_topo)
+            % Shape of the inputs:
+            % true_trajectory: [Num target, track_time, 2]
+            % estimated_trajectory: cell(track_time): [4 x 1]
+            estimated_trajectory_DA = cell2mat(estimated_trajectory_DA);
+            estimated_trajectory_CA = cell2mat(estimated_trajectory_CA);
+            fig = figure;
+            set(gcf,'Color','white');
+            set(gca, 'FontName', 'Times New Roman');
+            set(gca,'FontSize',25);
+            hold on;
+
+            gt = plot(true_trajectory(1, :, 1), true_trajectory(1, :, 2), '-.k', 'LineWidth', 2, 'DisplayName', 'True Trajectory','MarkerSize', 20);
+            plot(network_topo.radar_pos(:,1), network_topo.radar_pos(:,2), 'r.', 'MarkerSize', 40, 'DisplayName', 'Sensor Nodes');
+            pred = plot(estimated_trajectory_DA(1,:), estimated_trajectory_DA(2,:), '--ob', 'LineWidth', 2, 'DisplayName', 'Estimated Trajectory','MarkerSize', 10);
+            pred_CA = plot(estimated_trajectory_CA(1,:), estimated_trajectory_CA(2,:), '--sb', 'LineWidth', 2, 'DisplayName', 'Estimated Trajectory','MarkerSize', 10);
+
+            % Choose fewer index to visualized
+            gtstep = max(1, floor(length(true_trajectory(1,:,2))/20));
+            gt.MarkerIndices = 1:gtstep:length(true_trajectory(1,:,2));
+            
+            predstep = max(1, floor(length(estimated_trajectory_DA(1,:))/20));
+            pred.MarkerIndices = 1:predstep:length(estimated_trajectory_DA(1,:));
+
+
+            predstep_CA = max(1, floor(length(estimated_trajectory_CA(1,:))/20));
+            pred_CA.MarkerIndices = 1:predstep_CA:length(estimated_trajectory_CA(1,:));
+
+            % Plot communication link
+            for n = 1:network_topo.numNodes 
+                neighbors_idx = find(network_topo.laplacian_matrix(n,:) == -1).'; 
+                % pairs = nchoosek(neighbors_idx,2);
+                for j = 1: size(neighbors_idx,1)
+                     if (n == 1 & j == 1)
+                         plot([network_topo.radar_pos(n,1),network_topo.radar_pos(neighbors_idx(j),1)],...
+                         [network_topo.radar_pos(n,2),network_topo.radar_pos(neighbors_idx(j),2)],...
+                         '-k','LineWidth',1.5,'DisplayName','Communication link');
+                     end
+                     plot([network_topo.radar_pos(n,1),network_topo.radar_pos(neighbors_idx(j),1)],...
+                         [network_topo.radar_pos(n,2),network_topo.radar_pos(neighbors_idx(j),2)],...
+                         '-k','LineWidth',1.5);
+                end
+            end
+
+            hold off;
+            xlabel('Position x (m)');
+            ylabel('Position y (m)');
+            % title('Target Trajectory');
+            % legend('Location', 'best');
+            objs = findobj(gca, '-property', 'DisplayName');
+            objs = objs(arrayfun(@(h) ~isempty(h.DisplayName), objs));  
+            legend(flipud(objs), 'Location', 'bestoutside');  
+            grid on;box on;ax=gca;ax.LineWidth=1.5;
+            exportgraphics(fig, 'output.pdf', 'ContentType', 'vector');
+
+        end
+
         function plot_setup(obj, true_trajectory,network_topo)
             % Shape of the inputs:
             % true_trajectory: [Num target, track_time, 2]

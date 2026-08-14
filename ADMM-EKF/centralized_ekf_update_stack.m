@@ -45,6 +45,9 @@ function [z, H] = global_meas_and_jacobian_no_whiten(x, idx, network_topo, env)
 
     dx = xr - x_i;
     dy = yr - y_i;
+
+    % dx = -xr + x_i;
+    % dy = -yr + y_i;
     % dx = xr; dy = yr;
     r  = sqrt(dx^2 + dy^2);
 
@@ -67,6 +70,14 @@ function [z, H] = global_meas_and_jacobian_no_whiten(x, idx, network_topo, env)
     dfd_dy = c0 * ( (vy*r - g*(drdy)) / (r^2) );  % derivative w.r.t yr
     dfd_dvx = c0 * (dx / r);
     dfd_dvy = c0 * (dy / r);
+
+    % c0 = -2/env.lambda;
+    % g = v_proj;
+    % 
+    % dfd_dx = c0 * ( (vx*r + g*(drdx)) / (r^2) );  % derivative w.r.t xr
+    % dfd_dy = c0 * ( (vy*r + g*(drdy)) / (r^2) );  % derivative w.r.t yr
+    % dfd_dvx = c0 * (dx / r);
+    % dfd_dvy = c0 * (dy / r);
 
     H = [ drdx,    drdy,    0,      0;
           dfd_dx,  dfd_dy,  dfd_dvx, dfd_dvy ];

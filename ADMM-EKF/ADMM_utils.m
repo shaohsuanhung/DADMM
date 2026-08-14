@@ -24,8 +24,9 @@ classdef ADMM_utils
                 relative_position = [x_j - x_tar, y_j - y_tar];
                 norm_rel_position = sqrt((x_j - x_tar).^2 + (y_j - y_tar).^2);
                 norm_rel_position = max(norm_rel_position, 1);  % Avoid division by zero
-                % f_d_model = 2*(v_x * (x_j - x_tar) + (v_y * (y_j - y_tar))) / (norm_rel_position * lambda);
-                f_d_model = -2*(v_x * (x_j - x_tar) + (v_y * (y_j - y_tar))) / (norm_rel_position * lambda); % Updaet ver.
+                %% Check this at Aug 6.
+                f_d_model = 2*(v_x * (x_j - x_tar) + (v_y * (y_j - y_tar))) / (norm_rel_position * lambda);
+                % f_d_model = -2*(v_x * (x_j - x_tar) + (v_y * (y_j - y_tar))) / (norm_rel_position * lambda); % Updaet ver.
 
                 % Add the whitening transformation here if needed
                 if ~isempty(varargin)
@@ -51,8 +52,8 @@ classdef ADMM_utils
                     sigma_fd2 = Sigma_big(2,2);
         
                     % Accumulate the negative log likelihood - Eq.4.1
-                    log_likelihood = log_likelihood +  (1/2*(sigma_fd2*sigma_r2)) * ((f_d_ij - f_d_model).^2 * (sigma_r2) + (r_ij - r_model).^2 * (sigma_fd2));
-        %             log_likelihood = log_likelihood + (1/2*(sigma_fd2*sigma_r2))* ((f_d_ij -f_d_model).^2 * (sigma_r2) + (r_ij -r_model).^2 * (sigma_fd2));
+                    % log_likelihood = log_likelihood +  (1/(2*(sigma_fd2*sigma_r2))) * ((f_d_ij - f_d_model).^2 * (sigma_r2) + (r_ij - r_model).^2 * (sigma_fd2));
+                    log_likelihood = log_likelihood + (1/2*(sigma_fd2*sigma_r2))* ((f_d_ij -f_d_model).^2 * (sigma_r2) + (r_ij -r_model).^2 * (sigma_fd2));
                     idx = idx + 1; % Update index for accessing Sigma_big
                 end
             end 
@@ -118,8 +119,10 @@ classdef ADMM_utils
                     sigma_fd2 = Sigma_big(2,2);
         
                     % Accumulate the negative log likelihood - Eq.4.1
-                    log_likelihood = log_likelihood +  (1/2*(sigma_fd2*sigma_r2)) * ((f_d_ij - f_d_model).^2 * (sigma_r2) + (r_ij - r_model).^2 * (sigma_fd2));
-                    % log_likelihood = log_likelihood + (1/2*(sigma_fd2*sigma_r2))* ((f_d_ij -f_d_model).^2 * (sigma_r2) + (r_ij -r_model).^2 * (sigma_fd2));
+                    % log_likelihood = log_likelihood +  (1/(2*(sigma_fd2*sigma_r2))) * ((f_d_ij - f_d_model).^2 * (sigma_r2) + (r_ij - r_model).^2 * (sigma_fd2));
+                    log_likelihood = log_likelihood + (1/2*(sigma_fd2*sigma_r2))* ((f_d_ij -f_d_model).^2 * (sigma_r2) + (r_ij -r_model).^2 * (sigma_fd2));
+                    % log_likelihood = log_likelihood + (1/2)* ((f_d_ij -f_d_model).^2 / (sigma_fd2) + (r_ij -r_model).^2 / (sigma_r2));
+
                     idx = idx + 1; % Update index for accessing Sigma_big
                 end
             end 
@@ -154,8 +157,8 @@ classdef ADMM_utils
                     f_d_model = (v_x * (x_j - x_tar) + (v_y * (y_j - y_tar))) / (norm_rel_position * lambda);
 
                     % Accumulate the negative log likelihood - Eq.4.1
-                    prior = prior +  ((1/2)*(sigma_fd2*sigma_r2)) * (( mu_fdj- f_d_model).^2 * (sigma_r2) + (mu_rj - r_model).^2 * (sigma_fd2));
-                    % prior = prior +  (1/2*(sigma_fd2*sigma_r2)) * (( mu_fdj).^2 * (sigma_r2) + (mu_rj).^2 * (sigma_fd2));
+                    % prior = prior +  ((1/2)*(sigma_fd2*sigma_r2)) * (( mu_fdj- f_d_model).^2 * (sigma_r2) + (mu_rj - r_model).^2 * (sigma_fd2));
+                    prior = prior +  (1/2*(sigma_fd2*sigma_r2)) * (( mu_fdj).^2 * (sigma_r2) + (mu_rj).^2 * (sigma_fd2));
                     
                 end
             end 
@@ -165,9 +168,10 @@ classdef ADMM_utils
             prior = 0;
             dim = length(params);
             for j = 1:numNodes
-                    prior= prior + (1/sqrt((2*pi)^dim*det((sigma{j}))))* ((params - mu{j})' * inv((sigma{j})) * (params - mu{j}));
+                    % prior= prior + (1/sqrt((2*pi)^dim*det((sigma{j}))))* ((params - mu{j})' * inv((sigma{j})) * (params - mu{j}));
+                    prior = prior + 0.5 * (params-mu{j})' * (sigma{j} \ (params-mu{j}));
             end 
-            prior = (1/numNodes)*prior;
+            % prior = (1/numNodes)*prior;
         end
         
         function prior = prior_distribution_initial_values(params, mu_r, mu_d,sigma_r,sigma_d, radar_positions, numNodes, M, lambda)
@@ -299,11 +303,11 @@ classdef ADMM_utils
         end
     
         %% Posterior CRLB
-        function crlb = calculateBCRLB(true_params, radar_positions, numNodes, M, lambda, Sigma,Q)
+        function crlb = calculateBCRLB(true_params, radar_positions, numNodes, lambda, Sigma,Q)
             DEBUG = true;
             Q_inv = inv(Q);
-            FIM = ADMM_utils.calculateFIM(true_params, radar_positions, numNodes, M, lambda, Sigma, Q);
-            crlb = inv(FIM + numNodes*Q_inv);
+            FIM = ADMM_utils.calculateFIM(true_params, radar_positions, numNodes, lambda, Sigma);
+            crlb = inv(FIM + Q_inv);
 
             if DEBUG
                 disp('Fisher Information Matrix (FIM):');
@@ -311,15 +315,19 @@ classdef ADMM_utils
             end
         end
 
-        function postcrlb = calculatePCRLB(true_params, radar_positions, numNodes, M, lambda, Sigma, Q, Jk_prev, F)
+        function postcrlb = calculatePCRLB(true_params, radar_positions, numNodes, lambda, Sigma, Q, Jk_prev, F)
             if Jk_prev == 0
-                FIM = ADMM_utils.calculateFIM(true_params, radar_positions, numNodes, M, lambda, Sigma, Q);
-                Jk = FIM +  numNodes*inv(Q); % When T = 0, no 
+                FIM = ADMM_utils.calculateFIM(true_params, radar_positions, numNodes, lambda, Sigma);
+                % Jk = FIM +  numNodes*inv(Q); % When T = 0, no
+                % Jk = FIM +  inv(Q); % When T = 0, Use P_o
+                J_0 = inv(diag([1e4, 1e4, 1e6, 1e6]));
+                Jk = FIM + inv(F*inv(J_0)*F' + Q);
                 postcrlb = inv(Jk);
 
             else
-                FIM = ADMM_utils.calculateFIM(true_params, radar_positions, numNodes, M, lambda, Sigma, Q);
-                Jk = FIM +  inv(F*inv(Jk_prev)*F' + numNodes*Q);
+                FIM = ADMM_utils.calculateFIM(true_params, radar_positions, numNodes, lambda, Sigma);
+                % Jk = FIM +  inv(F*inv(Jk_prev)*F' + numNodes*Q);
+                Jk = FIM +  inv(F*inv(Jk_prev)*F' + Q);
                 postcrlb = inv(Jk);
                 % poscrlb = inv(pos);
             end
@@ -331,14 +339,13 @@ classdef ADMM_utils
             end
         end
         %% Fisher Information Matrix (FIM) calculation
-        function FIM = calculateFIM(true_params, radar_positions, numNodes, M, lambda, Sigma,varargin)
+        function FIM = calculateFIM(true_params, radar_positions, numNodes, lambda, Sigma,varargin)
             x_tar = true_params(1);
             y_tar = true_params(2);
             v_x = true_params(3);
             v_y = true_params(4);
             if numel(varargin) >= 1
                 Q = varargin{1};   % Another covariance matrix for the state, which is used for PCRLB calculation
-                Q_inv = inv(Q);
             end
             FIM = zeros(4, 4);
             Sigma_inv = inv(Sigma);  % Using the smaller Sigma meant for single measurements
@@ -351,31 +358,30 @@ classdef ADMM_utils
             %         relative_position = [x_j - x_tar, y_j - y_tar];
             %         norm_rel_pos = norm(relative_position);
             %         r_model = norm_rel_pos;
-            %         f_d_model = dot([v_x, v_y], relative_position) / (norm_rel_pos * lambda);
+            %         f_d_model = dot([v_x, v_y], relative_position) / (norm_rel_pos * lambda * 0.5);
             % 
-            %         Partial derivatives of range with respect to parameters
+            %         % Partial derivatives of range with respect to parameters
             %         dr_dx = (x_tar - x_j) / r_model;
             %         dr_dy = (y_tar - y_j) / r_model;
             %         dr_dvx = 0;
             %         dr_dvy = 0;
             % 
-            %         Partial derivatives of Doppler with respect to parameters
-            %         df_dvx = relative_position(1) / (norm_rel_pos * lambda);
-            %         df_dvy = relative_position(2) / (norm_rel_pos * lambda);
-            %         df_dx = -dot([v_x, v_y], relative_position) * (x_tar - x_j) / (norm_rel_pos^3 * lambda);
-            %         df_dy = -dot([v_x, v_y], relative_position) * (y_tar - y_j) / (norm_rel_pos^3 * lambda);
+            %         % Partial derivatives of Doppler with respect to parameters
+            %         df_dvx = relative_position(1) / (norm_rel_pos * lambda * 0.5);
+            %         df_dvy = relative_position(2) / (norm_rel_pos * lambda * 0.5);
+            %         df_dx = -(v_x/(norm_rel_pos*lambda*0.5)) + dot([v_x, v_y], relative_position) * (-x_tar + x_j) / (norm_rel_pos^3 * lambda * 0.5);
+            %         df_dy = -(v_y/(norm_rel_pos*lambda*0.5)) + dot([v_x, v_y], relative_position) * (-y_tar + y_j) / (norm_rel_pos^3 * lambda * 0.5);
             % 
-            %         Jacobian matrix for the i-th measurement
+            %         % Jacobian matrix for the i-th measurement
             %         J_i = [dr_dx, dr_dy, dr_dvx, dr_dvy; df_dx, df_dy, df_dvx, df_dvy];
             % 
-            %         Update FIM
-            %         if numel(varargin) >= 1
-            %             pos_cov = J_i * Q * J_i';
-            %             Sigma_pos = Sigma_inv - Sigma_inv*J_i(Q_inv + J_i'*Sigma_inv*J_i)\(J_i')*Sigma_inv;
-            %             Sigma_pos = inv(Sigma_inv + inv(pos_cov));
-            %         else
-            %             Sigma_pos = Sigma_inv;
-            %         end
+            %     if numel(varargin) >= 1
+            %         pos_cov = J_i * Q * J_i';
+            %         % Sigma_pos = Sigma_inv - Sigma_inv*J_i(Q_inv + J_i'*Sigma_inv*J_i)\(J_i')*Sigma_inv;
+            %         Sigma_pos = inv(Sigma + (pos_cov));
+            %     else
+            %         Sigma_pos = Sigma_inv;
+            %     end
             %         FIM = FIM + J_i'* (Sigma_pos) * J_i;
             %     end
             % end
@@ -385,8 +391,7 @@ classdef ADMM_utils
                 relative_position = [x_j - x_tar, y_j - y_tar];
                 norm_rel_pos = norm(relative_position);
                 r_model = norm_rel_pos;
-                f_d_model = dot([v_x, v_y], relative_position) / (norm_rel_pos * lambda * 0.5);
-
+                
                 % Partial derivatives of range with respect to parameters
                 dr_dx = (x_tar - x_j) / r_model;
                 dr_dy = (y_tar - y_j) / r_model;
@@ -396,21 +401,19 @@ classdef ADMM_utils
                 % Partial derivatives of Doppler with respect to parameters
                 df_dvx = relative_position(1) / (norm_rel_pos * lambda * 0.5 );
                 df_dvy = relative_position(2) / (norm_rel_pos * lambda* 0.5);
-                df_dx = -dot([v_x, v_y], relative_position) * (x_tar - x_j) / (norm_rel_pos^3 * lambda * 0.5);
-                df_dy = -dot([v_x, v_y], relative_position) * (y_tar - y_j) / (norm_rel_pos^3 * lambda * 0.6);
+
+                %% TO CHECK the FORMULA!!! Aug 1
+                df_dx = -(v_x/(norm_rel_pos*lambda*0.5)) + dot([v_x, v_y], relative_position) * (-x_tar + x_j) / (norm_rel_pos^3 * lambda * 0.5);
+                df_dy = -(v_y/(norm_rel_pos*lambda*0.5)) + dot([v_x, v_y], relative_position) * (-y_tar + y_j) / (norm_rel_pos^3 * lambda * 0.5);
+                
+
 
                 % Jacobian matrix for the i-th measurement
                 J_i = [dr_dx, dr_dy, dr_dvx, dr_dvy; df_dx, df_dy, df_dvx, df_dvy];
 
+                %% Check this! Aug 1.
                 % Update FIM
-                if numel(varargin) >= 1
-                    pos_cov = J_i * Q * J_i';
-                    % Sigma_pos = Sigma_inv - Sigma_inv*J_i(Q_inv + J_i'*Sigma_inv*J_i)\(J_i')*Sigma_inv;
-                    Sigma_pos = inv(Sigma + (pos_cov));
-                else
-                    Sigma_pos = Sigma_inv;
-                end
-                FIM = FIM + J_i'* (Sigma_pos) * J_i;
+                FIM = FIM + J_i'* (Sigma \ J_i);
             end            
 
             

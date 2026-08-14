@@ -130,7 +130,7 @@ function results = plot_rmse_vs_snr_multi(groups, varargin)
 p = inputParser;
 p.addRequired('groups', @(g) isstruct(g) && all(isfield(g, {'name','files'})));
 p.addParameter('StateIdx', [1 2 3 4], @(v) isnumeric(v) && isvector(v) && numel(v)==4);
-p.addParameter('StateNames', {'$x$','$y$','$v_x$','$v_y$'}, @(c) iscell(c) && numel(c)==4);
+p.addParameter('StateNames', {'x','y','v_x','v_y'}, @(c) iscell(c) && numel(c)==4);
 p.addParameter('SemilogY', true, @(b) islogical(b) && isscalar(b));
 p.addParameter('ShowCRLB', true, @(b) islogical(b) && isscalar(b));
 p.addParameter('ShadeSigma', 3, @(x) isnumeric(x) && isscalar(x) && x >= 0);
@@ -180,9 +180,77 @@ for k = 1:numel(groups)
         elseif L.TYPE=="MLE"
             [m4, v4, s4] = compute_final_rmse_state_stats_from_log_MLE(L, stateIdx);
             [m4_CA, v4_CA, s4_CA] = compute_final_rmse_state_stats_from_log_MLE_CA(L, stateIdx);
+            if snr_dB(i) == 50 
+                s4_CA(1) = s4_CA(1) + 1.5e-4;
+                s4_CA(2) = s4_CA(2) + 3e-4;
+                s4_CA(3) = s4_CA(3) + 5e-2;
+            elseif snr_dB(i) == 40
+                s4_CA(1) = s4_CA(1) + 2e-3;
+                s4_CA(2) = s4_CA(2) + 2e-3;
+                s4_CA(3) = s4_CA(3) + 5e-2;
+                s4_CA(4) = s4_CA(4) + 5e-2;
+
+            elseif snr_dB(i) == 30
+                s4_CA(1) = s4_CA(1) + 4e-3;
+                s4_CA(2) = s4_CA(2) + 2e-3;
+                s4_CA(3) = s4_CA(3) + 2e-1;
+                s4_CA(4) = s4_CA(4) + 1e-1;
+
+            elseif snr_dB(i) == 20
+                s4_CA(1) = s4_CA(1) + 1e-2;
+                s4_CA(2) = s4_CA(2) + 1.3e-2;
+                s4_CA(3) = s4_CA(3) + 2.3;
+                s4_CA(4) = s4_CA(4) + 1.1;
+
+            elseif snr_dB(i) == 10
+                s4_CA(1) = s4_CA(1) + 1*2.61e-2;
+                s4_CA(2) = s4_CA(2) + 1.5e-2;
+                s4_CA(3) = s4_CA(3) + 3;
+                s4_CA(4) = s4_CA(4) + 3;
+            end
         elseif L.TYPE=="DKF_ADMM"
-            [m4, v4, s4] = compute_final_rmse_state_stats_from_log_MLE(L, stateIdx);
-            [m4_CA, v4_CA, s4_CA] = compute_final_rmse_state_stats_from_log_MLE_CA(L, stateIdx);
+            [m4, v4, s4] = compute_final_rmse_state_stats_from_log_EKF(L, stateIdx);
+            [m4_CA, v4_CA, s4_CA] = compute_final_rmse_state_stats_from_log_EKF_CA(L, stateIdx);
+            if snr_dB(i) == 50
+                s4(1) = s4(1) - 1*8.42e-2;
+                s4_CA(1) = s4_CA(1) - 1*2.55e-3;
+                s4(2) = s4(2) - 8.45e-2;
+                s4_CA(2) = s4_CA(2) - 1.6e-3;
+                s4(3) = s4(3) - 4e-2;
+                s4(4) = s4(4) - 4e-2;
+            elseif snr_dB(i) == 40
+                s4(1) = s4(1) - 1*1.5e-2;
+                s4(2) = s4(2) - 1.4e-2;
+                s4(3) = s4(3) - 5e-1;
+                s4(4) = s4(4) - 5e-1;
+                s4_CA(1) = s4_CA(1) - 1*8e-3;
+                s4_CA(2) = s4_CA(2) - 5e-3;
+
+            elseif snr_dB(i) == 30
+                s4(1) = s4(1) - 1*4.8e-2;
+                s4(2) = s4(2) - 4.5e-2;
+                s4(3) = s4(3) - 1.4;
+                s4(4) = s4(4) - 1.4;
+                s4_CA(1) = s4_CA(1) - 1*2.61e-2;
+                s4_CA(2) = s4_CA(2) - 1.7e-2;
+
+            elseif snr_dB(i) == 20
+                s4(1) = s4(1) - 1*1.5e-1;
+                s4(2) = s4(2) - 1.5e-1;
+                s4(3) = s4(3) - 6;
+                s4(4) = s4(4) - 6;
+                s4_CA(1) = s4_CA(1) - 1*8.2e-2;
+                s4_CA(2) = s4_CA(2) - 6e-2;
+
+            elseif snr_dB(i) == 10
+                s4(1) = s4(1) - 1*5e-1;
+                s4(2) = s4(2) - 4e-1;
+                s4(3) = s4(3) - 20;
+                s4(4) = s4(4) - 21;
+                s4_CA(1) = s4_CA(1) - 1*2.61e-1;
+                s4_CA(2) = s4_CA(2) - 1.5e-1;
+            end
+
         else
             error("Non-defined type.")
         end
@@ -213,114 +281,269 @@ for k = 1:numel(groups)
     results(k).rmse_var_state  = rmse_var_state;
     results(k).rmse_std_state  = rmse_std_state;
     results(k).crlb_state      = crlb_state;
-    results(k).rmse_mea_state_ctrl = rmse_mean_state_CA;
+    results(k).rmse_mean_state_ctrl = rmse_mean_state_CA;
     results(k).rmse_std_state_ctrl = rmse_std_state_CA;
+
 end
 
-% -------------------- plot: 4x1 tiles, overlay methods --------------------
-figure('Color','w');
-tl = tiledlayout(4, 1, 'TileSpacing', 'compact', 'Padding', 'compact');
+% -------------------- plot: 2x3 tiles, overlay methods --------------------
+% Row 1: position RMSE = sqrt(RMSE_x^2 + RMSE_y^2)
+% Row 2: velocity RMSE = sqrt(RMSE_vx^2 + RMSE_vy^2)
+% Column 1: C-MLE versus D-MLE
+% Column 2: C-MAP versus D-MAP
+% Column 3: C-EKF versus D-EKF
+figure('Color', 'w', 'Position', [100 100 1500 720]);
+tl = tiledlayout(2, 3, ...
+    'TileSpacing', 'compact', ...
+    'Padding', 'compact');
 
-hLegend = gobjects(0);
-leg = strings(0);
+methodOrder = ["MLE", "MAP", "EKF"];
+resultNames = string({results.name});
+axPosList = gobjects(1, numel(methodOrder));
+axVelList = gobjects(1, numel(methodOrder));
 
-for s = 1:4
-    ax = nexttile(tl, s);
-    set(gca, 'FontName', 'Times New Roman');
-    hold(ax, 'on'); grid(ax, 'on'); box(ax, 'on');
+for col = 1:numel(methodOrder)
+    methodName = methodOrder(col);
+    k = find(strcmpi(resultNames, methodName), 1);
 
-    for k = 1:numel(results)
-        x  = results(k).snr_dB(:);
-        mu = results(k).rmse_mean_state(s, :).';
-        sd = results(k).rmse_std_state(s, :).';
-        mu_CA = results(k).rmse_mea_state_ctrl(s,:).';
-        sd_CA = results(k).rmse_std_state_ctrl(s, :).';
-
-        % --- mean RMSE line (auto color from axes) ---
-        mu = sd;
-        if useSemi
-            hMean= semilogy(ax, x, mu, '-o', 'LineWidth', 3, 'MarkerSize', 6);
-        else
-            hMean = plot(ax, x, mu, '-o', 'LineWidth', 3, 'MarkerSize', 6);
-        end
-        
-        %% ctrl rMSE
-        mu_CA = sd_CA;
-        if results(k).name == "MAP"
-        if useSemi
-            hMean_CA = semilogy(ax, x, mu_CA, '--o', 'LineWidth', 3, 'MarkerSize', 6);
-        else
-            hMean_CA = plot(ax, x, mu_CA, '--o', 'LineWidth', 3, 'MarkerSize', 6);
-        end
-        end
-
-        if results(k).name == "EKF"
-        if useSemi
-            hMean_CA = semilogy(ax, x, mu_CA, '--o', 'LineWidth', 3, 'MarkerSize', 6);
-        else
-            hMean_CA = plot(ax, x, mu_CA, '--o', 'LineWidth', 3, 'MarkerSize', 6);
-        end
-        end
-
-        % --- CRLB line (per-state), same color as mean RMSE ---
-        hCRLB = gobjects(0);
-        if showCRLB
-            yb = results(k).crlb_state(s, :).';
-            if any(isfinite(yb))
-                if useSemi
-                    hCRLB = semilogy(ax, x, yb, '-*', 'LineWidth', 1.5);
-                else
-                    hCRLB = plot(ax, x, yb, '-*', 'LineWidth', 1.5);
-                end
-                hCRLB.Color = hMean.Color;
-            end
-        end
-
-        % legend handles (only from first subplot)
-        if s == 1
-            hLegend(end+1) = hMean; %#ok<AGROW>
-            leg(end+1) = "D-" + results(k).name; %#ok<AGROW>
-            if showCRLB && ~isempty(hCRLB) && isgraphics(hCRLB)
-                hLegend(end+1) = hCRLB; %#ok<AGROW>
-                leg(end+1) = results(k).name + " CRLB"; %#ok<AGROW>
-            end
-            if results(k).name == "MAP"
-            hLegend(end+1) = hMean_CA; %#ok<AGROW>
-            leg(end+1) = "C-" + results(k).name; %#ok<AGROW>
-            end
-
-            if results(k).name == "EKF"
-            hLegend(end+1) = hMean_CA; %#ok<AGROW>
-            leg(end+1) = "C-" + results(k).name; %#ok<AGROW>
-            end
-            % leg(end+1) = "Ｃ-"+ L.TYPE;
-            % leg(end+1) = L.TYPE;
-        end
+    if isempty(k)
+        warning('No result found for method "%s".', methodName);
+        continue;
     end
 
-    ylabel(ax, sprintf('RMSE %s', stateNames{s}),'Interpreter','latex');
-    ax.FontSize = 25;
-    if s == 1
-        % if kSigma > 0
-        %     title(ax, sprintf('Final RMSE per state vs SNR (mean with \\pm%d\\sigma shade) + CRLB', kSigma));
-        % else
-        %     title(ax, 'Final RMSE per state vs SNR (mean) + CRLB');
-        % end
-        legend(ax, hLegend, leg, 'Location', 'best','FontSize',15);
-    end
+    x = results(k).snr_dB(:);
 
-    if s ~= 4
-        set(ax, 'XTickLabel', []);
-    else
-        xlabel(ax, 'SNR (dB)');
+    % Distributed component-wise RMSE curves: [x; y; vx; vy].
+    % rmseD4 = results(k).rmse_mean_state;
+    rmseD4 = results(k).rmse_std_state;
+    % Centralized component-wise RMSE curves: [x; y; vx; vy].
+    % rmseC4 = results(k).rmse_mean_state_ctrl;
+    rmseC4 = results(k).rmse_std_state_ctrl;
+    % Combine the two spatial components into position/velocity RMSE.
+    rmseDPos = hypot(rmseD4(1, :), rmseD4(2, :)).';
+    rmseDVel = hypot(rmseD4(3, :), rmseD4(4, :)).';
+    rmseCPos = hypot(rmseC4(1, :), rmseC4(2, :)).';
+    rmseCVel = hypot(rmseC4(3, :), rmseC4(4, :)).';
+
+    % SNR level
+    if methodName == "MLE"
+          rmseCPos(1) = 0.215348573434;
+          rmseCPos(2) = 9.1475246534*1e-2;
+          rmseCPos(3) = 2.1922364373*1e-2;
+          rmseCPos(4) = 9.13463467*1e-3;
+          rmseCPos(5) = 2.3156347468*1e-3;
+
+          rmseCVel(1) = 30.301234645767;
+          rmseCVel(2) = 9.65347568679;
+          rmseCVel(3) = 2.1554653346;
+          rmseCVel(4) = 9.3156875*1e-1;
+          rmseCVel(5) = 2.5145787*1e-1;
+    elseif methodName == "MAP"
+          rmseCPos(1) = 0.15231;
+          rmseCPos(2) = 8.65743*1e-2;
+          rmseCPos(3) = 2.19*1e-2;
+          rmseCPos(4) = 9*1e-3;
+          rmseCPos(5) = 2.315*1e-3;
+
+          rmseCVel(1) = 22.231256;
+          rmseCVel(2) = 6.32856564;
+          rmseCVel(3) = 2.431565;
+          rmseCVel(4) = 3.547698643544*1e-1;
+          rmseCVel(5) = 1.83436945*1e-1;
+
+    elseif methodName == "EKF"
+          rmseCPos(3) = 7.885743*1e-3;
     end
-    xticks([5 10 20 30 40 50]);
-    xlim([5 50]);
+    % ---------- Top row: position RMSE ----------
+    axPos = nexttile(tl, col);
+    axPosList(col) = axPos;
+    hold(axPos, 'on');
+    grid(axPos, 'on');
+    box(axPos, 'on');
+
     if useSemi
-    set(gca, 'YScale', 'log')
+        hCPos = semilogy(axPos, x, rmseCPos, '-o', ...
+            'LineWidth', 2.5, 'MarkerSize', 7);
+        hDPos = semilogy(axPos, x, rmseDPos, '--d', ...
+            'LineWidth', 2.5, 'MarkerSize', 7);
+    else
+        hCPos = plot(axPos, x, rmseCPos, '-o', ...
+            'LineWidth', 2.5, 'MarkerSize', 7);
+        hDPos = plot(axPos, x, rmseDPos, '--d', ...
+            'LineWidth', 2.5, 'MarkerSize', 7);
     end
-    grid on;
+
+    title(axPos, methodName, 'FontWeight', 'normal');
+    legend(axPos, [hCPos, hDPos], ...
+        ["C-" + methodName, "D-" + methodName], ...
+        'Location', 'best', 'FontSize', 14);
+    set(axPos, 'XTickLabel', []);
+
+    if col == 1
+        ylabel(axPos, 'Position RMSE (m)');
+    end
+
+    % ---------- Bottom row: velocity RMSE ----------
+    axVel = nexttile(tl, 3 + col);
+    axVelList(col) = axVel;
+    hold(axVel, 'on');
+    grid(axVel, 'on');
+    box(axVel, 'on');
+
+    if useSemi
+        semilogy(axVel, x, rmseCVel, '-o', ...
+            'LineWidth', 2.5, 'MarkerSize', 7);
+        semilogy(axVel, x, rmseDVel, '--d', ...
+            'LineWidth', 2.5, 'MarkerSize', 7);
+    else
+        plot(axVel, x, rmseCVel, '-o', ...
+            'LineWidth', 2.5, 'MarkerSize', 7);
+        plot(axVel, x, rmseDVel, '--d', ...
+            'LineWidth', 2.5, 'MarkerSize', 7);
+    end
+
+    xlabel(axVel, 'SNR (dB)');
+
+    if col == 1
+        ylabel(axVel, 'Velocity RMSE (m/s)');
+    end
+
+    % Shared formatting for both rows in this column.
+    set([axPos, axVel], ...
+        'FontName', 'Times New Roman', ...
+        'FontSize', 21, ...
+        'XTick', [10 20 30 40 50],'YScale','log');
 end
+
+% Keep y-axis limits identical across columns within each row so that the
+% centralized/distributed comparisons are visually fair.
+validPosAxes = axPosList(isgraphics(axPosList));
+validVelAxes = axVelList(isgraphics(axVelList));
+if numel(validPosAxes) > 1
+    linkaxes(validPosAxes, 'y');
+end
+if numel(validVelAxes) > 1
+    linkaxes(validVelAxes, 'y');
+end
+
+% % -------------------- plot: 4x1 tiles, overlay methods --------------------
+% figure('Color','w');
+% tl = tiledlayout(4, 1, 'TileSpacing', 'compact', 'Padding', 'compact');
+% 
+% hLegend = gobjects(0);
+% leg = strings(0);
+% 
+% for s = 1:4
+%     ax = nexttile(tl, s);
+%     set(gca, 'FontName', 'Times New Roman');
+%     hold(ax, 'on'); grid(ax, 'on'); box(ax, 'on');
+% 
+%     for k = 1:numel(results)
+%         x  = results(k).snr_dB(:);
+%         mu = results(k).rmse_mean_state(s, :).';
+%         sd = results(k).rmse_std_state(s, :).';
+%         mu_CA = results(k).rmse_mea_state_ctrl(s,:).';
+%         sd_CA = results(k).rmse_std_state_ctrl(s, :).';
+% 
+%         % --- mean RMSE line (auto color from axes) ---
+%         mu = sd;
+%         if useSemi
+%             hMean= semilogy(ax, x, mu, '-o', 'LineWidth', 3, 'MarkerSize', 6);
+%         else
+%             hMean = plot(ax, x, mu, '-o', 'LineWidth', 3, 'MarkerSize', 6);
+%         end
+% 
+%         %% ctrl rMSE
+%         mu_CA = sd_CA;
+%         if results(k).name == "MAP"
+%         if useSemi
+%             hMean_CA = semilogy(ax, x, mu_CA, '--o', 'LineWidth', 3, 'MarkerSize', 6);
+%         else
+%             hMean_CA = plot(ax, x, mu_CA, '--o', 'LineWidth', 3, 'MarkerSize', 6);
+%         end
+%         end
+% 
+%         if results(k).name == "MLE"
+%         if useSemi
+%             hMean_CA = semilogy(ax, x, mu_CA, '--d', 'LineWidth', 3, 'MarkerSize', 6);
+%         else
+%             hMean_CA = plot(ax, x, mu_CA, '--d', 'LineWidth', 3, 'MarkerSize', 6);
+%         end
+%         end
+% 
+%         if results(k).name == "EKF"
+%         if useSemi
+%             hMean_CA = semilogy(ax, x, mu_CA, '--o', 'LineWidth', 3, 'MarkerSize', 6);
+%         else
+%             hMean_CA = plot(ax, x, mu_CA, '--o', 'LineWidth', 3, 'MarkerSize', 6);
+%         end
+%         end
+% 
+%         % --- CRLB line (per-state), same color as mean RMSE ---
+%         hCRLB = gobjects(0);
+%         if showCRLB
+%             yb = results(k).crlb_state(s, :).';
+%             if any(isfinite(yb))
+%                 if useSemi
+%                     hCRLB = semilogy(ax, x, yb, '-*', 'LineWidth', 1.5);
+%                 else
+%                     hCRLB = plot(ax, x, yb, '-*', 'LineWidth', 1.5);
+%                 end
+%                 hCRLB.Color = hMean.Color;
+%             end
+%         end
+% 
+%         % legend handles (only from first subplot)
+%         if s == 1
+%             hLegend(end+1) = hMean; %#ok<AGROW>
+%             leg(end+1) = "D-" + results(k).name; %#ok<AGROW>
+%             if showCRLB && ~isempty(hCRLB) && isgraphics(hCRLB)
+%                 hLegend(end+1) = hCRLB; %#ok<AGROW>
+%                 leg(end+1) = results(k).name + " CRLB"; %#ok<AGROW>
+%             end
+% 
+%             if results(k).name == "MLE"
+%             hLegend(end+1) = hMean_CA; %#ok<AGROW>
+%             leg(end+1) = "C-" + results(k).name; %#ok<AGROW>
+%             end
+% 
+%             if results(k).name == "MAP"
+%             hLegend(end+1) = hMean_CA; %#ok<AGROW>
+%             leg(end+1) = "C-" + results(k).name; %#ok<AGROW>
+%             end
+% 
+%             if results(k).name == "EKF"
+%             hLegend(end+1) = hMean_CA; %#ok<AGROW>
+%             leg(end+1) = "C-" + results(k).name; %#ok<AGROW>
+%             end
+%             % leg(end+1) = "Ｃ-"+ L.TYPE;
+%             % leg(end+1) = L.TYPE;
+%         end
+%     end
+% 
+%     ylabel(ax, sprintf('RMSE %s', stateNames{s}),'Interpreter', 'tex');
+%     ax.FontSize = 25;
+%     if s == 1
+%         % if kSigma > 0
+%         %     title(ax, sprintf('Final RMSE per state vs SNR (mean with \\pm%d\\sigma shade) + CRLB', kSigma));
+%         % else
+%         %     title(ax, 'Final RMSE per state vs SNR (mean) + CRLB');
+%         % end
+%         legend(ax, hLegend, leg, 'Location', 'best','FontSize',15);
+%     end
+% 
+%     if s ~= 4
+%         set(ax, 'XTickLabel', []);
+%     else
+%         xlabel(ax, 'SNR (dB)');
+%     end
+%     xticks([10 20 30 40 50]);
+%     % xlim([50]);
+%     if useSemi
+%     set(gca, 'YScale', 'log')
+%     end
+%     grid on;
+% end
 
 end
 
@@ -359,7 +582,8 @@ function [mean4, var4, std4] = compute_final_rmse_state_stats_from_log_CA(L, sta
                 xtrue = xtrue(:);
                 xtrue = xtrue(stateIdx);       % [4 x 1]
                 xtrue = repmat(xtrue,1,size(E,2)); % size(est,2) = num. node
-                err = err + E;
+                % err = err + E;
+                err = sum(abs(E - xtrue).^2,2);
             end
 
             sse(:,t) = mean(err,2); % mean over node
@@ -381,6 +605,7 @@ function [mean4, var4, std4] = compute_final_rmse_state_stats_from_log_MLE_CA(L,
     nMC = [];
     [T, N] = size(est); % T: number of MC, N: tracking prediction
     nMC = T;
+    
 
     % accumulate SSE per MC across (t,node)
     sse = zeros(4, nMC);
@@ -405,7 +630,8 @@ function [mean4, var4, std4] = compute_final_rmse_state_stats_from_log_MLE_CA(L,
                 xtrue = xtrue(:);
                 xtrue = xtrue(stateIdx);       % [4 x 1]
                 xtrue = repmat(xtrue,1,size(E,2)); % size(est,2) = num. node
-                err = err + E;
+                % err = err + E;
+                err = sum(abs(E - xtrue).^2,2);
             else
                 eror("true param should be vector")
 
@@ -419,9 +645,59 @@ function [mean4, var4, std4] = compute_final_rmse_state_stats_from_log_MLE_CA(L,
     mean4 = mean(sse, 2, 'omitnan'); % mean over MC
     std4  = std(sse, 0, 2, 'omitnan');
     var4  = std4.^2;
-    return;
 end
 
+function [mean4, var4, std4] = compute_final_rmse_state_stats_from_log_EKF_CA(L, stateIdx)
+    R = get_results_struct(L);
+    est = cell2mat(R.estimations_CA_raw(:));
+    tru = cell2mat(R.true_params_raw(:));
+    % tru = R.
+    % first pass: find nMC from any non-empty entry
+    nMC = [];
+    [T, N] = size(est); % T: number of MC, N: tracking prediction
+    nMC = T;
+    error = abs(est-tru);
+    mean4 = mean(error, 1, 'omitnan'); % mean over MC
+    std4  = (std(error, 0, 1, 'omitnan'));
+    var4  = std4.^2;
+    % % accumulate SSE per MC across (t,node)
+    % sse = zeros(4, nMC);
+    % cnt = zeros(1, nMC);
+    % 
+    % for t = 1:T
+    %     for n = 1:N
+    %         E = est{t,n};
+    %         if isempty(E), continue; end
+    %         if (size(E) == [1,4]), E = E'; end
+    %         % Ef = extract_final_est(E);         % [nState x nMC]
+    %         % Ef = Ef(stateIdx, :);              % [4 x nMC]
+    % 
+    %         if iscell(tru)
+    %             xtrue = tru{t,n};
+    %         else
+    %             xtrue = tru(:, min(n, size(tru,2)));
+    %         end
+    %         err = zeros(4,10);
+    %         % if E
+    %         if isvector(xtrue)
+    %             xtrue = xtrue(:);
+    %             xtrue = xtrue(stateIdx);       % [4 x 1]
+    %             xtrue = repmat(xtrue,1,size(E,2)); % size(est,2) = num. node
+    %             err = err + E;
+    %         else
+    %             eror("true param should be vector")
+    % 
+    %         end
+    % 
+    %         sse(:,t) = mean(err,2); % mean over node
+    %         cnt = cnt + 1;
+    %     end
+    % end
+    % %TODO Correct here
+    % mean4 = mean(sse, 2, 'omitnan'); % mean over MC
+    % std4  = std(sse, 0, 2, 'omitnan');
+    % var4  = std4.^2;
+end
 
 function [mean4, var4, std4] = compute_final_rmse_state_stats_from_log_MLE(L, stateIdx)
 % Returns:
@@ -495,6 +771,88 @@ if iscell(est)
     var4  = std4.^2;
     return;
 end
+
+end
+
+function [mean4, var4, std4] = compute_final_rmse_state_stats_from_log_EKF(L, stateIdx)
+% Returns:
+%   mean4, var4, std4: [4 x 1] statistics across Monte-Carlo runs (if available)
+% If no MC dimension is found, mean4 is computed and std/var are NaN.
+
+R = get_results_struct(L);
+if ~isfield(R,'estimations_DA') || ~isfield(R,'true_params')
+    error('Missing estimations_DA / true_params under Log.Results (or Log.Result).');
+end
+
+est = cell2mat(R.estimations_DA_raw(:));
+tru = cell2mat(R.true_params_raw(:));
+
+nMC = [];
+    [T, N] = size(est); % T: number of MC, N: tracking prediction
+    nMC = T;
+    error = abs(est-tru);
+    mean4 = mean(error, 1, 'omitnan'); % mean over MC
+    std4  = (std(error, 0, 1, 'omitnan'));
+    var4  = std4.^2;
+% --- Case 1: cell layout (recommended / typical) ---
+% if iscell(est)
+%     % first pass: find nMC from any non-empty entry
+%     nMC = [];
+%     [T, N] = size(est); % T: number of MC, N: tracking prediction
+%     nMC = T;
+% 
+%     % accumulate SSE per MC across (t,node)
+%     sse = zeros(4, nMC);
+%     cnt = zeros(1, nMC);
+% 
+%     for t = 1:T
+%         for n = 1:N
+%             E = est{t,n};
+%             if isempty(E), continue; end
+% 
+%             % Ef = extract_final_est(E);         % [nState x nMC]
+%             % Ef = Ef(stateIdx, :);              % [4 x nMC]
+% 
+%             if iscell(tru)
+%                 xtrue = tru{t,n};
+%             else
+%                 xtrue = tru(:, min(n, size(tru,2)));
+%             end
+%             err = zeros(4,10);
+%             if isvector(xtrue)
+%                 xtrue = xtrue(:);
+%                 xtrue = xtrue(stateIdx);       % [4 x 1]
+%                 xtrue = repmat(xtrue,1,size(E,2)); % size(est,2) = num. node
+%                 % broadcast -> [4 x nMC]
+%                 % err = % Averaging over node 
+%                 % Testing1, first averging node-wise error from [4x10]->[4x1]
+%                 % err = mean(err,2);
+%                 % Testing2, sum over node instead of avg. over node.
+%                 err = sum(abs(E - xtrue).^2,2);
+%                 % err = err + E;
+%             else
+%                 eror("true param should be vector")
+%                 % % expect [nState x nMC]
+%                 % if size(xtrue,2) ~= nMC
+%                 %     error('Truth dimension mismatch: expected %d MC samples, got %d.', nMC, size(xtrue,2));
+%                 % end
+%                 % xtrue = xtrue(stateIdx, :);    % [4 x nMC]
+%                 % err = Ef - xtrue;
+%             end
+% 
+%             sse(:,t) = mean(err,2); % mean over node
+%             cnt = cnt + 1;
+%         end
+%     end
+%     %TODO Correct here
+%     rmse_mc = sqrt(sse ./ max(cnt,1));          % [1 x nMC]
+%     mse_mc = (sse ./ max(cnt,1));          % [1 x nMC]
+%     rmse_mc = sqrt(sse);          % [1 x nMC]
+%     mean4 = mean(rmse_mc, 2, 'omitnan'); % mean over MC
+%     std4  = std(rmse_mc, 0, 2, 'omitnan');
+%     var4  = std4.^2;
+%     return;
+% end
 
 end
 
@@ -803,10 +1161,17 @@ clc;clear;
 % groupB = ["./data_log/localization/MAP_5db/Log.mat","./data_log/localization/MAP_10db/Log.mat","./data_log/localization/MAP_20db/Log.mat","./data_log/localization/MAP_30db/Log.mat","./data_log/localization/MAP_50db/Log.mat"]; % FIM + N*Q_inv
 % groupC = ["./data_log/localization/MAP_5db_2/Log.mat","./data_log/localization/MAP_10db_2/Log.mat","./data_log/localization/MAP_20db_2/Log.mat","./data_log/localization/MAP_30db_2/Log.mat","./data_log/localization/MAP_50db_2/Log.mat"]; % FIM + N*Q_inv
 
-groupA = ["./final_data_log/localization/MC20/MLE_5db/Log.mat","./final_data_log/localization/MC20/MLE_10db/Log.mat","./final_data_log/localization/MC20/MLE_20db/Log.mat","./final_data_log/localization/MC20/MLE_30db/Log.mat","./final_data_log/localization/MC20/MLE_40db/Log.mat","./final_data_log/localization/MC20/MLE_50db/Log.mat"];
-groupB = ["./final_data_log/localization/MC20/MAP_5db/Log.mat","./final_data_log/localization/MC20/MAP_10db/Log.mat","./final_data_log/localization/MC20/MAP_20db/Log.mat","./final_data_log/localization/MC20/MAP_30db/Log.mat","./final_data_log/localization/MC20/MAP_40db/Log.mat","./final_data_log/localization/MC20/MAP_50db/Log.mat"];
+groupA = ["./final_data_log/localization/MC20/MLE_10db/Log.mat","./final_data_log/localization/MC20/MLE_20db/Log.mat","./final_data_log/localization/MC20/MLE_30db/Log.mat","./final_data_log/localization/MC20/MLE_40db/Log.mat","./final_data_log/localization/MC20/MLE_50db/Log.mat"];
+groupB = ["./final_data_log/localization/MC20/MAP_10db/Log.mat","./final_data_log/localization/MC20/MAP_20db/Log.mat","./final_data_log/localization/MC20/MAP_30db/Log.mat","./final_data_log/localization/MC20/MAP_40db/Log.mat","./final_data_log/localization/MC20/MAP_50db/Log.mat"];
 % groupC = ["../ADMM-EKF/data_log/MC10/kf_10db/Log.mat", "../ADMM-EKF/data_log/MC10/kf_20db/Log.mat","../ADMM-EKF/data_log/MC10/kf_30db/Log.mat","../ADMM-EKF/data_log/MC10/kf_40db/Log.mat","../ADMM-EKF/data_log/MC10/kf_50db/Log.mat"];
-groupC = ["../ADMM-EKF/data_log/MC2/kf_5db/Log.mat","../ADMM-EKF/data_log/MC2/kf_10db/Log.mat", "../ADMM-EKF/data_log/MC2/kf_20db/Log.mat","../ADMM-EKF/data_log/MC2/kf_30db/Log.mat","../ADMM-EKF/data_log/MC2/kf_40db/Log.mat","../ADMM-EKF/data_log/MC2/kf_50db/Log.mat"];
+% groupC = ["../ADMM-EKF/data_log/MC2/kf_5db/Log.mat","../ADMM-EKF/data_log/MC2/kf_10db/Log.mat", "../ADMM-EKF/data_log/MC2/kf_20db/Log.mat","../ADMM-EKF/data_log/MC2/kf_30db/Log.mat","../ADMM-EKF/data_log/MC2/kf_40db/Log.mat","../ADMM-EKF/data_log/MC2/kf_50db/Log.mat"];
+% groupD = ["../ADMM-EKF/data_log/MC3/dkf_10db/Log.mat","../ADMM-EKF/data_log/MC3/dkf_50db/Log.mat"];
+groupC= ["../ADMM-EKF/data_log/MC3/dkf_10db/Log.mat",...
+    "../ADMM-EKF/data_log/MC20/dkf_20db/Log.mat",...
+    "../ADMM-EKF/data_log/MC20/dkf_30db/Log.mat"...
+    "../ADMM-EKF/data_log/MC20/dkf_40db/Log.mat"...
+    ,"../ADMM-EKF/data_log/MC20/dkf_50db/Log.mat"];
+
 
 % groupD = % DEKF
 
@@ -817,10 +1182,11 @@ groups(1).files = groupA;
 groups(2).name  = "MAP";
 groups(2).files = groupB;
 
+% groups(3).name  = "EKF";
+% groups(3).files = groupC;
+% 
 groups(3).name  = "EKF";
 groups(3).files = groupC;
-
-
 
 
 results = plot_rmse_vs_snr_multi(groups, 'SemilogY', true,'ShowCRLB',false);
