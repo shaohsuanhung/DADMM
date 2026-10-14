@@ -10,51 +10,41 @@ classdef ADMM_utils
             v_y = params(4);
             log_likelihood = 0;
         
-            idx = 1; % Index to access the correct elements in Sigma_big
+            if ~isempty(varargin)
+                L = varargin{1};
+            else
+                L = [];
+            end
         
             for j = 1:numNodes
                 x_j = radar_positions(j, 1);
                 y_j = radar_positions(j, 2);
 
-                % Range model
-                r_model = sqrt((x_j - x_tar).^2 + (y_j - y_tar).^2);
-                r_model = max(r_model, 1); % Avoid division by zero for stability
-                
-                % Doppler shift model
-                relative_position = [x_j - x_tar, y_j - y_tar];
-                norm_rel_position = sqrt((x_j - x_tar).^2 + (y_j - y_tar).^2);
-                norm_rel_position = max(norm_rel_position, 1);  % Avoid division by zero
-                %% Check this at Aug 6.
-                f_d_model = 2*(v_x * (x_j - x_tar) + (v_y * (y_j - y_tar))) / (norm_rel_position * lambda);
-                % f_d_model = -2*(v_x * (x_j - x_tar) + (v_y * (y_j - y_tar))) / (norm_rel_position * lambda); % Updaet ver.
+                % Use the same target-minus-radar convention as the
+                % measurement generator and the MAP objective.
+                delta_position = [x_tar - x_j; y_tar - y_j];
+                r_model = norm(delta_position);
+                r_safe = max(r_model, 1e-8);
+                f_d_model = 2 * ([v_x, v_y] * delta_position) / ...
+                    (r_safe * lambda);
 
-                % Add the whitening transformation here if needed
-                if ~isempty(varargin)
-                    L = varargin{1};
-                    r_model = L(1,1) * r_model + L(1,2) * f_d_model;
-                    f_d_model = L(2,1) * r_model + L(2,2) * f_d_model;
-                end
                 for i = 1:M                    
                     % Extracting current measurements
                     r_ij = range_with_error(i,j); % Per pulse for that sensor 
                     f_d_ij = doppler_with_error(i,j);
         
-                    % Extract the variances from Sigma_big
-                    % try
-                    %     sigma_r2 = Sigma_big((2*(idx-1)) + 1, (2*(idx-1))+ 1); % Variance of range
-                    %     sigma_fd2 = Sigma_big(2*idx, 2*idx); % Variance of Doppler
-                    % catch
-                    %     % fprintf(Sigma_big);
-                    %     sigma_r2 = Sigma_big(1,1);
-                    %     sigma_fd2 = Sigma_big(2,2);
-                    % end
-                    sigma_r2 = Sigma_big(1,1);
-                    sigma_fd2 = Sigma_big(2,2);
-        
-                    % Accumulate the negative log likelihood - Eq.4.1
-                    % log_likelihood = log_likelihood +  (1/(2*(sigma_fd2*sigma_r2))) * ((f_d_ij - f_d_model).^2 * (sigma_r2) + (r_ij - r_model).^2 * (sigma_fd2));
-                    log_likelihood = log_likelihood + (1/2*(sigma_fd2*sigma_r2))* ((f_d_ij -f_d_model).^2 * (sigma_r2) + (r_ij -r_model).^2 * (sigma_fd2));
-                    idx = idx + 1; % Update index for accessing Sigma_big
+                    innovation = [r_ij - r_model;
+                                  f_d_ij - f_d_model];
+
+                    % When pre-whitening is enabled, transform the complete
+                    % residual (measurement minus model).  Sigma_big is then
+                    % env.Sigma_filter, normally eye(2).
+                    if ~isempty(L)
+                        innovation = L * innovation;
+                    end
+
+                    log_likelihood = log_likelihood + ...
+                        0.5 * innovation.' * (Sigma_big \ innovation);
                 end
             end 
             log_likelihood = log_likelihood + ((1/2)*log(2*pi));% What about 1/2 ln{sigma)
@@ -67,8 +57,12 @@ classdef ADMM_utils
             %%% many noded you input, then calculate to give flexibility. 
             % Calculate prior
             ut = ADMM_utils;
+            numPriors = numel(mu_state);
+            assert(numPriors == numel(sigma_state), ...
+                'mu_state and sigma_state must contain the same number of priors.');
             % prior = ut.prior_distribution(params, mu_r, mu_d, sigma_r, sigma_d, radar_positions, numNodes, M, lambda);
-            prior = ut.state_prior_distribution(params, mu_state, sigma_state,numNodes);
+            prior = ut.state_prior_distribution( ...
+                params, mu_state, sigma_state, numPriors);
             % prior = ut.prior_distribution_initial_guess(params, mu_r, mu_d, sigma_r, sigma_d, radar_positions, numNodes, M, lambda);
             % prior = ut.prior_distribution_initial_values(params, mu_r, mu_d, sigma_r, sigma_d, radar_positions, numNodes, M, lambda);
 
@@ -78,52 +72,34 @@ classdef ADMM_utils
             v_y = params(4);
             log_likelihood = 0;
         
-            idx = 1; % Index to access the correct elements in Sigma_big
+            if ~isempty(varargin)
+                L = varargin{1};
+            else
+                L = [];
+            end
         
             for j = 1:numNodes
                 x_j = radar_positions(j, 1);
                 y_j = radar_positions(j, 2);
                 for i = 1:M
-                    % Range model
-                    r_model = sqrt((x_j - x_tar).^2 + (y_j - y_tar).^2);
-                    r_model = max(r_model, 1e-8); % Avoid division by zero for stability
-                    
-                    % Doppler shift model
-                    relative_position = [x_j - x_tar, y_j - y_tar];
-                    norm_rel_position = sqrt((x_j - x_tar).^2 + (y_j - y_tar).^2);
-                    norm_rel_position = max(norm_rel_position, 1e-8);  % Avoid division by zero
-                    % f_d_model = (v_x * (x_j - x_tar) + (v_y * (y_j - y_tar))) / (norm_rel_position * lambda);
-                     % f_d_model = 2*(v_x * (x_j - x_tar) + (v_y * (y_j - y_tar))) / (norm_rel_position * lambda); % Updaet ver.
-                    f_d_model = -2*(v_x * (x_j - x_tar) + (v_y * (y_j - y_tar))) / (norm_rel_position * lambda); % Updaet ver.
+                    delta_position = [x_tar - x_j; y_tar - y_j];
+                    r_model = norm(delta_position);
+                    r_safe = max(r_model, 1e-8);
+                    f_d_model = 2 * ([v_x, v_y] * delta_position) / ...
+                        (r_safe * lambda);
 
-
-                    % Add the whitening transformation here if needed
-                    if ~isempty(varargin)
-                        L = varargin{1};
-                        r_model = L(1,1) * r_model + L(1,2) * f_d_model;
-                        f_d_model = L(2,1) * r_model + L(2,2) * f_d_model;
-                    end
                     % Extracting current measurements
                     r_ij = range_with_error(i,j); % Per pulse for that sensor 
                     f_d_ij = doppler_with_error(i,j);
         
-                    % Extract the variances from Sigma_big
-                    % try
-                    %     sigma_r2 = Sigma_big((2*(idx-1)) + 1, (2*(idx-1))+ 1); % Variance of range
-                    %     sigma_fd2 = Sigma_big(2*idx, 2*idx); % Variance of Doppler
-                    % catch
-                    %     sigma_r2 = Sigma_big(1,1);
-                    %     sigma_fd2 = Sigma_big(2,2);
-                    % end 
-                    sigma_r2 = Sigma_big(1,1);
-                    sigma_fd2 = Sigma_big(2,2);
-        
-                    % Accumulate the negative log likelihood - Eq.4.1
-                    % log_likelihood = log_likelihood +  (1/(2*(sigma_fd2*sigma_r2))) * ((f_d_ij - f_d_model).^2 * (sigma_r2) + (r_ij - r_model).^2 * (sigma_fd2));
-                    log_likelihood = log_likelihood + (1/2*(sigma_fd2*sigma_r2))* ((f_d_ij -f_d_model).^2 * (sigma_r2) + (r_ij -r_model).^2 * (sigma_fd2));
-                    % log_likelihood = log_likelihood + (1/2)* ((f_d_ij -f_d_model).^2 / (sigma_fd2) + (r_ij -r_model).^2 / (sigma_r2));
+                    innovation = [r_ij - r_model; f_d_ij - f_d_model];
 
-                    idx = idx + 1; % Update index for accessing Sigma_big
+                    if ~isempty(L)
+                        innovation = L * innovation;
+                    end
+
+                    log_likelihood = log_likelihood + ...
+                        0.5 * innovation.' * (Sigma_big \ innovation);
                 end
             end 
             posterior = log_likelihood + prior + ((1/2)*log(2*pi));% What about 1/2 ln{sigma)
@@ -166,12 +142,12 @@ classdef ADMM_utils
         function prior = state_prior_distribution(params, mu,sigma, numNodes)
             % Shape of mu_r, mu_d, sigma_r, sigma_d should be [numNodes x 1]
             prior = 0;
-            dim = length(params);
             for j = 1:numNodes
                     % prior= prior + (1/sqrt((2*pi)^dim*det((sigma{j}))))* ((params - mu{j})' * inv((sigma{j})) * (params - mu{j}));
                     prior = prior + 0.5 * (params-mu{j})' * (sigma{j} \ (params-mu{j}));
             end 
-            % prior = (1/numNodes)*prior;
+            % Do not average independent prior terms here. Consensus prior
+            % partitioning is handled explicitly by the caller.
         end
         
         function prior = prior_distribution_initial_values(params, mu_r, mu_d,sigma_r,sigma_d, radar_positions, numNodes, M, lambda)
@@ -260,8 +236,10 @@ classdef ADMM_utils
             sum_L2 = 0;
             for j = neighbors{n}
                 % eq 4.13
-                sum_L1 = sum_L1 + (Nu{n}(:,j))' * (params - update_z{n}(:,j));
-                sum_L2 = sum_L2 + norm((c_penalty/2)' .* (params - update_z{n}(:,j))).^2;
+                delta = params(:) - update_z{n}(:,j);
+                sum_L1 = sum_L1 + (Nu{n}(:,j))' * delta;
+                sum_L2 = sum_L2 + 0.5 * ...
+                    sum(c_penalty(:) .* delta.^2);
         %         sum_L2 = sum_L2 + norm((params - update_z{n}(:,j))).^2;
             end
         
@@ -290,8 +268,10 @@ classdef ADMM_utils
             sum_L2 = 0;
             for j = neighbors{n}
                 % eq 4.13
-                sum_L1 = sum_L1 + (Nu{n}(:,j))' * (params - update_z{n}(:,j));
-                sum_L2 = sum_L2 + norm((c_penalty/2)' .* (params - update_z{n}(:,j))).^2;
+                delta = params(:) - update_z{n}(:,j);
+                sum_L1 = sum_L1 + (Nu{n}(:,j))' * delta;
+                sum_L2 = sum_L2 + 0.5 * ...
+                    sum(c_penalty(:) .* delta.^2);
             end
             map_with_consensus = posterior + sum_L1 + sum_L2;
             % fprintf('posterior  = %.6e\n', real(posterior));
@@ -424,10 +404,14 @@ classdef ADMM_utils
             %TODO: To make it to handle the multiple communcation radius cases. 
             % Initialize the adjacency matrix
             adj_mtx = zeros(numNodes,numNodes);  
+            % Include geometrically boundary-valued edges despite ordinary
+            % floating-point roundoff (for example, a chord intended as 60).
+            distance_tolerance = 1e-12 * max(1, abs(communication_radius));
             % Calculate the adjacency matrix
              for i = 1:numNodes
                 for j = i+1:numNodes % Since A is symmetric, compute only for j > i
-                   if norm(pos(i,:) - pos(j,:)) <= communication_radius
+                   if norm(pos(i,:) - pos(j,:)) <= ...
+                           communication_radius + distance_tolerance
                       adj_mtx(i,j) = 1;
                       adj_mtx(j,i) = 1; % Symmetric
                    end
@@ -453,7 +437,14 @@ classdef ADMM_utils
 
         function weight_matrix = calculate_weight_mtx(degree_matrix, adj_matrix,numNodes)
              %maximum degree weights constants
-            alpha = 1 / max(diag(degree_matrix));
+            max_degree = max(diag(degree_matrix));
+            if max_degree == 0
+                % With no communication edges, every node retains its own
+                % value.  This also avoids the previous 1/0 and Inf*0 NaNs.
+                weight_matrix = eye(numNodes);
+                return;
+            end
+            alpha = 1 / max_degree;
         
             % Initialize final weight matrix
             weight_matrix = zeros(numNodes);
@@ -551,9 +542,16 @@ classdef ADMM_utils
             target_pos_expand = repmat(reshape(target.target_position,[num_target,1,size(target.target_position,2),size(target.target_position,3)]),[1,network_topo.numNodes,1,1]);
             relative_position = -(radar_pos_expand - target_pos_expand); % [num_target x numNodes x M x 2]
             range_true = vecnorm(relative_position,2,4); % [num_target x numNodes x M]
-            %TOCORRECT Doppler calculation
-            relative_vel = squeeze(target.target_state(1,:,3:4))';
-            doppler_true = reshape((sum(squeeze(relative_position).*permute(relative_vel,[3,2,1]),3)),[num_target,network_topo.numNodes,M])./(range_true.* env.lambda*0.5);
+            % Expand [target x time x velocity-component] to match
+            % [target x node x time x component]. Avoid squeeze so this is
+            % valid for M=1 and for multiple targets.
+            target_velocity = reshape(target.target_state(:,:,3:4), ...
+                [num_target, 1, M, 2]);
+            velocity_expand = repmat(target_velocity, ...
+                [1, network_topo.numNodes, 1, 1]);
+            radial_numerator = sum(relative_position .* velocity_expand, 4);
+            doppler_true = 2 * radial_numerator ./ ...
+                (range_true .* env.lambda);
             measurements_true(:,:, 1:2:end) = range_true; % Odd index for range
             measurements_true(:,:, 2:2:end) = doppler_true; % Even index for Doppler
         end
@@ -799,8 +797,14 @@ classdef ADMM_utils
             fclose(fid);
         end
         function ADMM = Initialized_ADMM(network_topo)
-            options_Dctral = optimoptions('fmincon', 'Display', 'off', ScaleProblem=true, OptimalityTolerance=1e-2, FunctionTolerance=1e-6, StepTolerance=1e-6, MaxIterations=100);
-            options_Ctral =  optimoptions('fmincon', 'Display', 'off', ScaleProblem=true, OptimalityTolerance=1e-6, FunctionTolerance=1e-6, StepTolerance=1e-6, MaxIterations=100000);
+            options_Dctral = optimoptions('fmincon', ...
+                'Display', 'off', ...
+                'ScaleProblem', true, ...
+                'OptimalityTolerance', 1e-6, ...
+                'FunctionTolerance', 1e-8, ...
+                'StepTolerance', 1e-8, ...
+                'MaxIterations', 300, ...
+                'MaxFunctionEvaluations', 5000);
             ADMM = struct();
             ADMM.solver = options_Dctral;
             ADMM.converged= false;

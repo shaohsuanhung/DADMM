@@ -13,6 +13,9 @@ function [Pcrlb, info] = calculate_pcrlb_v5( ...
 %
 %   The first measurement is assumed to observe the initial state x_1, so
 %   no F/Q prediction is applied before the first measurement update.
+%   INFO.JmeasByRadar has size [4 x 4 x Nradar x NUMSTEPS].  Its
+%   radar-wise sum is INFO.Jmeas at every time step, which permits local
+%   sensor subsets to reuse the exact same expected-information samples.
 %
 %   Name-value options:
 %       'Seed'              Independent state-MC seed (default 314159)
@@ -124,8 +127,10 @@ function [Pcrlb, info] = calculate_pcrlb_v5( ...
         L0 * randn(stateStream, nx, numStateSamples);
 
     Pcrlb = zeros(nx, nx, numSteps);
+    numRadars = size(radarPositions, 1);
     info = struct();
     info.Jmeas = zeros(nx, nx, numSteps);
+    info.JmeasByRadar = zeros(nx, nx, numRadars, numSteps);
     info.Jpost = zeros(nx, nx, numSteps);
     info.Ppred = zeros(nx, nx, numSteps);
     info.stateMean = zeros(nx, numSteps);
@@ -138,15 +143,21 @@ function [Pcrlb, info] = calculate_pcrlb_v5( ...
     end
 
     for k = 1:numSteps
-        Jmeas = zeros(nx, nx);
+        JmeasByRadar = zeros(nx, nx, numRadars);
         minimumSampledRange = inf;
         for sampleIdx = 1:numStateSamples
-            [Jsample, sampleMinimumRange] = measurement_information( ...
+            [JsampleByRadar, sampleMinimumRange] = measurement_information( ...
                 X(:, sampleIdx), radarPositions, lambda, Rchol, minRange);
-            Jmeas = Jmeas + Jsample;
+            JmeasByRadar = JmeasByRadar + JsampleByRadar;
             minimumSampledRange = min(minimumSampledRange, sampleMinimumRange);
         end
-        Jmeas = symmetrize_matrix(Jmeas / numStateSamples);
+        for radarIdx = 1:numRadars
+            JmeasByRadar(:,:,radarIdx) = symmetrize_matrix( ...
+                JmeasByRadar(:,:,radarIdx) / numStateSamples);
+        end
+        % Define the aggregate from the stored per-radar matrices so the
+        % decomposition and INFO.Jmeas cannot diverge numerically.
+        Jmeas = sum(JmeasByRadar, 3);
 
         if k == 1
             % target_state(:,:,1) in v5 is the initial state.
@@ -162,6 +173,7 @@ function [Pcrlb, info] = calculate_pcrlb_v5( ...
 
         Pcrlb(:,:,k) = symmetrize_matrix(Ppost);
         info.Jmeas(:,:,k) = Jmeas;
+        info.JmeasByRadar(:,:,:,k) = JmeasByRadar;
         info.Jpost(:,:,k) = Jpost;
         info.Ppred(:,:,k) = Ppred;
         info.stateMean(:,k) = mean(X, 2);
@@ -181,10 +193,11 @@ function [Pcrlb, info] = calculate_pcrlb_v5( ...
     end
 
     info.kind = 'BayesianExpectedFIM';
-    info.version = 1;
+    info.version = 2;
     info.seed = seed;
     info.numStateSamples = numStateSamples;
     info.numSteps = numSteps;
+    info.numRadars = numRadars;
     info.firstMeasurementAtInitialState = true;
     info.usesPhysicalMeasurementCovariance = true;
     info.processNoiseRank = processNoiseRank;
@@ -196,15 +209,16 @@ function [Pcrlb, info] = calculate_pcrlb_v5( ...
     info.lambda = lambda;
 end
 
-function [J, minimumRange] = measurement_information( ...
+function [JByRadar, minimumRange] = measurement_information( ...
     state, radarPositions, lambda, Rchol, minRange)
     position = state(1:2);
     velocity = state(3:4);
     c0 = 2 / lambda;
-    J = zeros(4, 4);
+    numRadars = size(radarPositions, 1);
+    JByRadar = zeros(4, 4, numRadars);
     minimumRange = inf;
 
-    for radarIdx = 1:size(radarPositions, 1)
+    for radarIdx = 1:numRadars
         delta = position - radarPositions(radarIdx,:).';
         range = norm(delta);
         minimumRange = min(minimumRange, range);
@@ -226,10 +240,8 @@ function [J, minimumRange] = measurement_information( ...
              dfd_dp, dfd_dv];
 
         weightedH = Rchol' \ (Rchol \ H);
-        J = J + H' * weightedH;
+        JByRadar(:,:,radarIdx) = symmetrize_matrix(H' * weightedH);
     end
-
-    J = symmetrize_matrix(J);
 end
 
 function inverseA = spd_inverse(A, matrixName)

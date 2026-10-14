@@ -23,8 +23,8 @@ H_bar = zeros(mz*J, nx);
 for a = 1:J
     j = idx_set(a);
 
-    hj = models_ut.LocalMeasureModel_dkf(x_pred, j, network_topo, env);            % 2x1 (unwhitened physical)
-    Hj = models_ut.LocalMeasureModelJacobian_dkf(x_pred, j, network_topo, env);    % 2x4 (unwhitened)
+    [hj, Hj] = models_ut.MeasureModelAndJacobian( ...
+        x_pred, j, network_topo, env);
 
     h_bar((a-1)*mz+1:a*mz) = hj;
     H_bar((a-1)*mz+1:a*mz, :) = Hj;
@@ -59,7 +59,7 @@ else
     P_post = (eye(nx) - K*H_bar) * P_pred * (eye(nx) - K*H_bar).' + K*R_bar*K.'; % Joseph
 end
 
-% P_post = 0.5*(P_post + P_post.');
+P_post = 0.5 * (P_post + P_post.');
 
 dbg = struct();
 dbg.h_bar = h_bar;

@@ -10,20 +10,48 @@ classdef models
             next_state = F * state;
         end
         function z = MeasureModel(state,idx,network_topo,env)
-            x = state(1);
-            y = state(2);
-            v_x = state(3);
-            v_y = state(4);
-
-            dist_node_tar = @(x,y,node_pos) sqrt((node_pos(1)-x)^2 + (node_pos(2)-y)^2);
-            % r = max(dist_node_tar(x,y,network_topo.radar_pos(idx,:)),1); % Avoid division by zero for stability
-            r = max(dist_node_tar(x,y,network_topo.radar_pos(idx,:)),1); % Avoid division by zero for stability
-            f =  ((v_x*(network_topo.radar_pos(idx,1)-x))+(v_y*(network_topo.radar_pos(idx,2)-y)))/(env.lambda*r);
-            % f =  2*((v_x*(network_topo.radar_pos(idx,1)-x))+(v_y*(network_topo.radar_pos(idx,2)-y)))/(env.lambda*r);
-            z = [r; f];
-
+            [z, ~] = models.MeasureModelAndJacobian( ...
+                state, idx, network_topo, env);
         end
-        function z = LocalMeasureModel(state,idx,network_topo,env)
+
+        function [z, H] = MeasureModelAndJacobian( ...
+                state, idx, network_topo, env)
+            % Canonical unwhitened global range/Doppler model.
+            %
+            %   delta = target_position - radar_position
+            %   range = ||delta||
+            %   fd    = (2/lambda) * velocity' * delta / range
+            %
+            % State convention: [x; y; vx; vy] in global coordinates.
+            position = state(1:2);
+            velocity = state(3:4);
+            position = position(:);
+            velocity = velocity(:);
+
+            radar_position = network_topo.radar_pos(idx, :).';
+            delta = position - radar_position;
+            range = norm(delta);
+
+            if range <= 1e-12
+                error('models:TargetAtRadar', ...
+                    'The range/Doppler model is undefined at radar %d.', idx);
+            end
+
+            c0 = 2 / env.lambda;
+            radial_numerator = velocity.' * delta;
+            fd = c0 * radial_numerator / range;
+
+            z = [range; fd];
+
+            dr_dp = delta.' / range;
+            dfd_dp = c0 * (velocity.' / range - ...
+                radial_numerator * delta.' / range^3);
+            dfd_dv = c0 * delta.' / range;
+
+            H = [dr_dp, zeros(1, 2); ...
+                 dfd_dp, dfd_dv];
+        end
+        function z = LocalMeasureModel(state,~,~,env)
             % The state send here is already in local coordinate, so no need to subtract radar position
             x = state(1);
             y = state(2);
@@ -39,7 +67,7 @@ classdef models
 
         end
 
-        function z = LocalMeasureModel_dkf(state,idx,network_topo,env)
+        function z = LocalMeasureModel_dkf(state,~,~,env)
             % The state send here is already in local coordinate, so no need to subtract radar position
             x = state(1);
             y = state(2);
@@ -127,7 +155,6 @@ classdef models
         
         function H = LocalMeasureModelJacobian_dkf(state,idx,network_topo, env)
             x = state(1);y = state(2);
-            x_i = network_topo.radar_pos(idx,1); y_i = network_topo.radar_pos(idx,2);
             dx = x; dy = y;
             v_x = state(3);
             v_y = state(4);
@@ -224,49 +251,11 @@ classdef models
         end 
 
         function z = MeasureModelJacobian(state,idx,network_topo, env)
-            x = state(1);
-            y = state(2);
-            v_x = state(3);
-            v_y = state(4);
-            dist_node_tar = @(x,y,node_pos) max(sqrt((x-node_pos(1))^2 + (y-node_pos(2))^2),1); % Avoid division by zero for stability
-            r = dist_node_tar(x,y,network_topo.radar_pos(idx,:));
-
-            dr_dx = @(idx,x,y,v_x,v_y, network_topo) (x-network_topo.radar_pos(idx,1))/(r);
-            dr_dy =  @(idx,x,y,v_x,v_y, network_topo)  (y-network_topo.radar_pos(idx,2))/(r);
-
-
-            df_dx = @(idx,x,y,v_x,v_y, network_topo) ((-v_x*r)+...
-                                                    ((v_x*(network_topo.radar_pos(idx,1)-x)+v_y*(network_topo.radar_pos(idx,2)-y))*...
-                                                    (network_topo.radar_pos(idx,1)-x)/r))/...
-                                                    (env.lambda*r^2);
-
-            df_dy = @(idx,x,y,v_x,v_y, network_topo)  ((-v_y*r)+...
-                                                    ((v_x*(network_topo.radar_pos(idx,1)-x)+v_y*(network_topo.radar_pos(idx,2)-y))*...
-                                                    (network_topo.radar_pos(idx,2)-y)/r))/...
-                                                    (env.lambda*r^2);
-
-            df_dvx = @(idx,x,y,v_x,v_y, network_topo) -(x-network_topo.radar_pos(idx,1))/ (env.lambda*r);
-            df_dvy = @(idx,x,y,v_x,v_y, network_topo) -(y-network_topo.radar_pos(idx,2))/ (env.lambda*r); 
-
-
-            z = [dr_dx(idx,x,y,v_x,v_y, network_topo), dr_dy(idx,x,y,v_x,v_y, network_topo), 0, 0; 
-                 df_dx(idx,x,y,v_x,v_y, network_topo), df_dy(idx,x,y,v_x,v_y, network_topo), ...
-                df_dvx(idx,x,y,v_x,v_y, network_topo), df_dvy(idx,x,y,v_x,v_y, network_topo)];
-            
-            % Show input state
-            % disp('Calculating Jacobian Matrix...');
-            % fprintf('State3: %s\n', num2str(state(3)));
-            % fprintf('State4: %s\n', num2str(state(4)));
-            % disp(['Radar Index: ', num2str(idx)]);
-            % disp(['Radar Position: ', num2str(network_topo.radar_pos(idx,:))]);
-            % disp('Jacobian Matrix:');
-            % disp(z);
+            [~, z] = models.MeasureModelAndJacobian( ...
+                state, idx, network_topo, env);
         end 
         function printEkfIntermediates(old_ekf, z, dt, stepTag, i, network_topo, env)
             ekf = clone(old_ekf); % Copy to avoid modifying the original EKF state
-            % 安全小常數，避免 r ~ 0 的除零
-            epsr = 1e-9;
-
             % 取出必要函式與雜訊
             f  = ekf.StateTransitionFcn;
             % FJ = ekf.StateTransitionJacobianFcn;

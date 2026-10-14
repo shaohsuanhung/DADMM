@@ -219,3 +219,6 @@ paper_writing/
 synthetic_tracking_dataset/data/
 synthetic_tracking_dataset/figs/
 synthetic_tracking_dataset/docs/
+
+*.zip
+ADMM-EKF/results/

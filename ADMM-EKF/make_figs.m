@@ -96,12 +96,8 @@ classdef make_figs
                 legend([legend_entries], 'Location', 'northeast','FontSize',12);
                 hx.FontSize= 18;
                 hy.FontSize= 18; 
-                if (param == 1 | param == 2)
-                    xlim([0, 50]);
-                end
-                if (param == 3 | param == 4)
-                    xlim([0, 100]);
-                end
+                numIterations = size(all_estimations_every_iter, 3);
+                xlim([1, max(2, numIterations)]);
                 box on; grid on;
             end
             t.TileSpacing = 'compact';

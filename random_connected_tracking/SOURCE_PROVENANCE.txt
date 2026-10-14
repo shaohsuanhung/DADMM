@@ -1,0 +1,31 @@
+Source snapshot: 2026-10-13
+Original root: /Users/shaohung/Desktop/Desktop - K2D4GJQXL6/PhD/paper/DADMM
+Copied from current working-tree files, including the user's existing uncommitted changes.
+Original source files were read only.
+SHA-256  relative source path
+
+a74a4690866503268ac4b065f04be6eacb5276d9e4251c19cf84f26fed701c99  all_in_one/MAP_tracking.m
+59f38d61b6b8f3819561e5402d267c2fe30807c2ac4c5bf88d59ac8df50e3234  all_in_one/ADMM_utils.m
+fef7f77a5ce809d42aaae4176eb025d3804d81171f2799680bebdf82a97677c6  ADMM-EKF/run_sim_dkf_consensus_admm_v5.m
+e1079d243f320f26a5c326267c38c628c2f7b56971953046c40afad438c26eeb  ADMM-EKF/ADMM_utils.m
+4afb92cddafffdb04a7313efacbc2edbc2ff0554ab2608f647cc657740f7080f  ADMM-EKF/models.m
+c0a8f2f8f809c1f7ca7c7743304554dbf427823416b14c50ce035440855f7333  ADMM-EKF/centralized_ekf_update_stack.m
+84aa4ab85d134f4b802d62d381e7c024d9a680f267d52ea014234c54e48421d1  ADMM-EKF/calculate_pcrlb_v5.m
+e14750b2399bad6e29677495cef269f9ea512e7d74f07d2b7c6cbd5999d20e02  ADMM-EKF/generateNonlinearTrajectory.m
+
+Trajectory/CV update: the original generator was adapted into common/make_tracking_truth.m.
+Shared fixed-duration truth, per-sample batch Doppler velocity, CV batch prediction and disabled-by-default assumed-CV PCRLB supersede the corresponding legacy behaviors.
+
+User correction: the active shared truth now uses ADMM-EKF/ADMM_utils.m::gen_ref_trajectory, extracted to common/gen_ref_trajectory.m.
+The former generateNonlinearTrajectory.m entry is historical provenance only. Velocity is gradient(position,dt) as in the original v5 gen_ref_trajectory example. CV prediction is unchanged.
+
+Radar deployment update: common/make_radar_positions.m generates a shared seeded uniform-disk layout, with circle mode available. Communication edges keep their separate random stream. Original source files, trajectory generation and estimator formulas are unchanged by this update.
+
+Trajectory selector update: gen_ref_trajectory remains the default. The original
+ADMM-EKF/generateNonlinearTrajectory.m is now also available as Type="nonlinear"
+through common/generateNonlinearTrajectory.m. The adaptation keeps the original
+sinusoidal speed/heading, smoothed randomness, Euler position integration and
+analytic cubic-smoothstep velocity correction, adds local RNG restoration and
+duration/input checks, and uses 0:dt:T so the specified start is exact.
+The full reference is generated before taking any short-run prefix. Original
+source files, CV estimator dynamics and affine measurement objectives are unchanged.
